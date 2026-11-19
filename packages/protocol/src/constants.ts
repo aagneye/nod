@@ -24,9 +24,12 @@ export const FEE_SATS_PER_BYTE = 1n;
 
 export const MAX_PURPOSE_LENGTH = 140;
 
-/** Public Fulcrum servers (Electrum Cash protocol over secure WebSocket). */
+/**
+ * Public Fulcrum servers (Electrum Cash protocol over secure WebSocket, port 50004).
+ * All four answered a live check on 2026-11-19.
+ */
 export const ELECTRUM_SERVERS: Record<Network, string[]> = {
-  mainnet: ['bch.imaginary.cash', 'electroncash.de', 'bch.loping.net'],
+  mainnet: ['bch.imaginary.cash', 'bch.loping.net'],
   chipnet: ['chipnet.imaginary.cash', 'chipnet.bch.ninja'],
 };
 
@@ -35,6 +38,7 @@ export const CASHADDR_PREFIX: Record<Network, 'bitcoincash' | 'bchtest'> = {
   chipnet: 'bchtest',
 };
 
+/** TODO(Person B): open one real txid on each before the demo; swap the chipnet one if it fails. */
 export const EXPLORER_TX_URL: Record<Network, string> = {
   mainnet: 'https://explorer.bch.ninja/tx/',
   chipnet: 'https://chipnet.chaingraph.cash/tx/',
