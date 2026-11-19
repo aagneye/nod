@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@bitauth/libauth": "^3.0.0",
     "cashscript": "^0.14.0"
   },
   "devDependencies": {
