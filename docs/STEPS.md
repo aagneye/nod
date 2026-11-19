@@ -20,49 +20,49 @@ Folders: `packages/protocol/src/`, `contracts/`, `docs/PROTOCOL.md`. Existing: `
 
 ### Nov 19
 
-- [ ] **A1 · P0 · Request schema and canonical hash**
+- [x] **A1 · P0 · Request schema and canonical hash**
   Files: `packages/protocol/src/request.ts`, `packages/protocol/test/request.test.ts`
   zod schema for `NodRequest` (v=1, 32-hex `id`, 66-hex `agent`, cashaddr `vendor`, `SatsAmount | TokenAmount`, `purpose` ≤ `MAX_PURPOSE_LENGTH`, `expiry`, optional `buyer`); `canonicalize(req)` (sorted keys, no whitespace); `hashRequest(req)` = sha256 of canonical JSON (libauth).
   Done when: same request with keys in different order gives the same hash; invalid fields are rejected by zod.
 
-- [ ] **A2 · P0 · Schnorr sign and verify**
+- [x] **A2 · P0 · Schnorr sign and verify**
   Files: `packages/protocol/src/request.ts`, `packages/protocol/test/request.test.ts`
   `signRequest(req, agentPrivKey) -> SignedNodRequest`, `verifyRequest(signed) -> boolean` (secp256k1 Schnorr over the 32-byte hash, pubkey from `req.agent`).
   Done when: valid sig verifies; changing any field (amount, vendor, purpose) makes verify fail.
 
-- [ ] **A3 · P0 · Link encode/decode and `createRequest`**
+- [x] **A3 · P0 · Link encode/decode and `createRequest`**
   Files: `packages/protocol/src/request.ts`, `packages/protocol/test/request.test.ts`
   base64url of `{req, sig}`; `createRequest(fields, agentPrivKey) -> { req, sig }` plus `buildRequestUrl(baseUrl, signed)` (fills `v`, random `id`, `agent`); `decodeLink(payload) -> { signed, valid, expired }` (throws on a malformed payload; a well-formed request with a bad signature gives `valid:false`).
   Done when: round-trip test passes; garbage payload throws; bad signature gives `valid:false`; past `expiry` gives `expired:true`.
 
-- [ ] **A4 · P0 · Electrum client**
+- [x] **A4 · P0 · Electrum client**
   Files: `packages/protocol/src/electrum.ts`
   Using `@electrum-cash/network` and `ELECTRUM_SERVERS[network]`: `getUtxos(address)`, `getHistory(address)`, `getTx(txid)` (raw hex), `broadcast(txHex)`; returns `Utxo` with token data when present.
   Done when: a small script lists UTXOs and history for a funded Chipnet address and fetches one tx.
 
-- [ ] **A5 · P0 · First exports for B and C**
+- [x] **A5 · P0 · First exports for B and C**
   Files: `packages/protocol/src/index.ts`
   Export types, constants, request functions, electrum functions; add stubs for `buildPayment`, `findPayment`, `verifyReceipt` that throw "not implemented" with the final signatures.
   Done when: `import { createRequest, decodeLink } from '@nod/protocol'` works from `apps/web` and `packages/agent`; `npm test` is green.
 
 ### Nov 20
 
-- [ ] **A6 · P0 · Memo builder**
+- [x] **A6 · P0 · Memo builder**
   Files: `packages/protocol/src/memo.ts`, `packages/protocol/test/memo.test.ts`
   `encodeMemo(kind, hash)`: `OP_RETURN` + push `MEMO_PREFIX_HEX` ("NOD") + push kind byte (`MEMO_KIND_SINGLE` or `MEMO_KIND_BATCH`) + push 32-byte hash. Batch hash = `hashBatch` (sha256 of the sorted request hashes concatenated). Plus `decodeMemo(lockingBytecode) -> { kind, hash } | null`.
   Done when: build then parse returns the same kind and hash; output stays under 223 bytes.
 
-- [ ] **A7 · P0 · Single payment tx**
+- [x] **A7 · P0 · Single payment tx**
   Files: `packages/protocol/src/tx.ts`, `packages/protocol/test/tx.test.ts`
   `buildPayment({ requests, utxos, changeAddress }) -> { txHex, sourceOutputs, inputPaths }` for one BCH request: coin selection from `SpendableUtxo[]`, vendor output, memo output, change (dropped if below `DUST_SATS`), fee at `FEE_SATS_PER_BYTE`. Match `sourceOutputs` to the shape in `@wizardconnect/dapp` types; `inputPaths` as `InputPath[]`.
   Done when: unit test decodes the tx and finds vendor output = requested sats, memo hash = request hash, inputs ≥ outputs + fee; rejects expired requests and insufficient funds.
 
-- [ ] **A8 · P0 · Receipt check and paid check**
+- [x] **A8 · P0 · Receipt check and paid check**
   Files: `packages/protocol/src/receipt.ts`, `packages/protocol/test/receipt.test.ts`
   `verifyReceipt(txid, req) -> ReceiptCheck` (fetch tx, check vendor output amount, memo hash, reasons list); `findPayment(req) -> { txid } | null` (scan vendor history for a tx committing this hash).
   Done when: test with a fixture tx passes; wrong amount / wrong hash / wrong vendor each give `ok:false` with a clear reason; `findPayment` finds a real Chipnet payment.
 
-- [ ] **A9 · P1 · Batch payment**
+- [x] **A9 · P1 · Batch payment**
   Files: `packages/protocol/src/tx.ts`, `packages/protocol/src/receipt.ts`, tests
   `buildPayment` with up to `MAX_BATCH` requests: one output per request, one batch memo; `verifyReceipt` accepts a batch tx when given the request (and its batch siblings or the batch hash).
   Done when: 3-request batch test passes build and verify; >`MAX_BATCH` is rejected.
@@ -78,12 +78,12 @@ Folders: `packages/protocol/src/`, `contracts/`, `docs/PROTOCOL.md`. Existing: `
   Token request → vendor output with `TOKEN_OUTPUT_SATS` and token amount; token change back to buyer; receipt checks token category and units.
   Done when: unit test for a token payment passes; one real PUSD (or test token) payment verifies on chain.
 
-- [ ] **A12 · P1 · Protocol doc**
+- [x] **A12 · P1 · Protocol doc**
   Files: `docs/PROTOCOL.md`
   Request fields, canonical JSON, hash, signature, link format, memo layout (`NOD` + kind + hash), batch hash rule, paid check.
   Done when: someone outside the team could build a compatible agent from the doc alone.
 
-- [ ] **A13 · P3 · Allowance contract (stretch, only if P0–P2 are done)**
+- [x] **A13 · P3 · Allowance contract (stretch, only if P0–P2 are done)**
   Files: `contracts/allowance.cash`, `contracts/allowance.test.ts`
   `Allowance(ownerPkh, agentPk, vendorPkh, capSats, periodBlocks)` with `agentSpend(sig)` and `ownerWithdraw(walletInputIndex)` as in the plan.
   Done when: CashScript tests pass for: agent spend within cap, over cap fails, too early fails, owner withdraw works, owner withdraw to another address fails.
@@ -254,17 +254,32 @@ Folders: `packages/agent/src/`, `api/`, submission material. Import from `@nod/p
 
 ## Integration checkpoints
 
-### 1. Shared handshake (Nov 19, first hour, everyone)
-Agree these and do not change them without telling the team:
+### 1. Shared API (built and exported from `@nod/protocol`)
+These are the real signatures. Do not change them without telling the team:
 ```ts
-createRequest(fields, agentPrivKey) -> { req, sig }   // buildRequestUrl(baseUrl, signed) -> link
-decodeLink(payload) -> { signed, valid, expired }   // throws on malformed payload
-buildPayment({ requests, utxos, changeAddress }) -> { txHex, sourceOutputs, inputPaths }
-findPayment(req) -> { txid } | null
-verifyReceipt(txid, req) -> { ok, reasons[] }   // ReceiptCheck
+// requests (agent side)
+generateAgentKey() -> { privateKey, publicKey }
+createRequest(fields, agentPrivateKey) -> SignedNodRequest            // { req, sig }
+buildRequestUrl(baseUrl, signed) -> string                            // `${baseUrl}/r#${payload}`
+decodeLink(payload) -> { signed, valid, expired }                     // throws on malformed payload
+hashRequest(req) -> Uint8Array                                        // 32 bytes
+hashBatch(hashes) -> Uint8Array
+
+// chain
+const chain = new NodElectrum('chipnet' | 'mainnet'); await chain.connect()
+chain.getUtxos(address) / getHistory(address) / getTransactionHex(txid) / broadcast(txHex)
+
+// paying (web app)
+buildPayment({ network, payments: [{ vendor, amount, requestHash }], utxos: SpendableUtxo[], changeAddress })
+  -> { txHex, transaction, sourceOutputs, inputPaths, fee, memo }
+// then: manager.signTransaction({ transaction: { transaction: txHex, sourceOutputs, userPrompt, broadcast: true }, inputPaths })
+
+// receipts (web app, vendor, MCP)
+findPayment(chain, req, requestHash, { batchHashes?, maxTxs? }) -> { txid } | null
+verifyReceipt(chain, txid, req, requestHash, { batchHashes? }) -> { ok, reasons[] }
 ```
-- [ ] Signatures exported (stubs ok) from `@nod/protocol` (A5).
-- [ ] B and C have mocks with the same shapes.
+- [x] Exported from `@nod/protocol` (A5); 54 protocol tests + 9 contract tests green.
+- [ ] B checks `sourceOutputs` against the real `@wizardconnect/dapp` types (current shape follows the WalletConnect-BCH convention: libauth `Input & Output` per input).
 
 ### 2. First Chipnet end-to-end (target Nov 20 midday)
 - [ ] CLI (C5) creates a request → link opens on approval page (B5).
