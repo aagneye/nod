@@ -1,0 +1,20 @@
+{
+  "name": "@nod/contracts",
+  "version": "0.1.0",
+  "description": "CashScript allowance contract that lets an agent spend a capped amount per period",
+  "type": "module",
+  "scripts": {
+    "compile": "cashc src/allowance.cash --output artifacts/allowance.json",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "cashscript": "^0.14.0"
+  },
+  "devDependencies": {
+    "cashc": "^0.14.0",
+    "typescript": "^5.9.3",
+    "vitest": "^5.1.1"
+  },
+  "license": "MIT"
+}
