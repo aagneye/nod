@@ -32,8 +32,8 @@ Folders: `packages/protocol/src/`, `contracts/`, `docs/PROTOCOL.md`. Existing: `
 
 - [ ] **A3 · P0 · Link encode/decode and `createRequest`**
   Files: `packages/protocol/src/request.ts`, `packages/protocol/test/request.test.ts`
-  base64url of `{req, sig}`; `createRequest(fields, agentPrivKey) -> { req, sig, link }` (fills `v`, random `id`, `agent`); `decodeLink(payload) -> { req, sig, valid, expired }` (never throws on bad input, returns `valid:false`).
-  Done when: round-trip test passes; garbage payload gives `valid:false`; past `expiry` gives `expired:true`.
+  base64url of `{req, sig}`; `createRequest(fields, agentPrivKey) -> { req, sig }` plus `buildRequestUrl(baseUrl, signed)` (fills `v`, random `id`, `agent`); `decodeLink(payload) -> { signed, valid, expired }` (throws on a malformed payload; a well-formed request with a bad signature gives `valid:false`).
+  Done when: round-trip test passes; garbage payload throws; bad signature gives `valid:false`; past `expiry` gives `expired:true`.
 
 - [ ] **A4 · P0 · Electrum client**
   Files: `packages/protocol/src/electrum.ts`
@@ -257,8 +257,8 @@ Folders: `packages/agent/src/`, `api/`, submission material. Import from `@nod/p
 ### 1. Shared handshake (Nov 19, first hour, everyone)
 Agree these and do not change them without telling the team:
 ```ts
-createRequest(fields, agentPrivKey) -> { req, sig, link }
-decodeLink(payload) -> { req, sig, valid, expired }
+createRequest(fields, agentPrivKey) -> { req, sig }   // buildRequestUrl(baseUrl, signed) -> link
+decodeLink(payload) -> { signed, valid, expired }   // throws on malformed payload
 buildPayment({ requests, utxos, changeAddress }) -> { txHex, sourceOutputs, inputPaths }
 findPayment(req) -> { txid } | null
 verifyReceipt(txid, req) -> { ok, reasons[] }   // ReceiptCheck
