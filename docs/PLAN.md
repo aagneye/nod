@@ -10,6 +10,39 @@ The name "Selene" was dropped because Selene Wallet is a sponsor and its lead de
 
 Step-by-step tasks for each person are in [`docs/STEPS.md`](STEPS.md).
 
+## Progress (last updated Nov 19, 2026)
+
+Update this section and the boxes in `docs/STEPS.md` whenever a task is finished.
+
+| Area | Owner | Status |
+|---|---|---|
+| Repo setup, plan, steps, protocol spec | Aagneye | ✅ Done |
+| Protocol and chain (`packages/protocol`) | Aagneye | ✅ Done: 54 tests green |
+| Allowance contract (`contracts/`) | Aagneye | ✅ Done: 9 tests green |
+| Web app (`apps/web`) | Person B | ⬜ Not started |
+| Agent tool, demo API, launch | Person C | ⬜ Not started |
+| First Chipnet payment end-to-end | A + B | ⬜ Not started (needs web app + wallet) |
+| First mainnet payment end-to-end | A + B + C | ⬜ Not started |
+| DoraHacks submission | Person C | ⬜ Not started |
+
+**Done (Person A):**
+- [x] Request format: canonical JSON, sha256 hash, Schnorr sign/verify, base64url links (`src/request.ts`)
+- [x] Electrum client: UTXOs, history, tx fetch, broadcast; servers live-checked on mainnet and Chipnet (`src/electrum.ts`)
+- [x] On-chain memo `NOD` + kind + hash (`src/memo.ts`)
+- [x] Transaction builder: single, batch (up to 50), token outputs, coin selection, change (`src/tx.ts`)
+- [x] Receipt verification and paid check (`src/receipt.ts`)
+- [x] Package entry exporting the whole API (`src/index.ts`)
+- [x] Protocol spec (`docs/PROTOCOL.md`)
+- [x] Allowance covenant with tests (`contracts/`)
+
+**Still open for Person A:**
+- [ ] Pair with B on the first real Chipnet payment (A10)
+- [ ] Confirm PUSD token category and decimals; fill `PUSD` in `constants.ts` (A11)
+- [ ] Check `sourceOutputs` against the real `@wizardconnect/dapp` types once B installs it
+- [ ] Bug fixes from the end-to-end runs (A14)
+
+**Team-only material:** the Person B / C task PDF lives in `misc/` (git-ignored), not in the repo.
+
 ## What the hackathon requires (from the DoraHacks page)
 
 | Rule | How Nod meets it |
@@ -139,12 +172,12 @@ findPayment(req) -> { txid } | null
 verifyReceipt(txid, req) -> { ok, reasons[] }
 ```
 
-### Person A — Protocol and chain (`packages/protocol`, `contracts/`) — **Aagneye**
-- Request schema, canonical hash, sign/verify, link encoding + unit tests.
-- Electrum client: UTXOs, address history, get tx, broadcast.
-- Transaction builder: single payment → batch → PUSD token outputs.
-- Receipt verification and paid-check.
-- Stretch: allowance contract + tests.
+### Person A — Protocol and chain (`packages/protocol`, `contracts/`) — **Aagneye** ✅
+- [x] Request schema, canonical hash, sign/verify, link encoding + unit tests.
+- [x] Electrum client: UTXOs, address history, get tx, broadcast.
+- [x] Transaction builder: single payment → batch → token outputs. (PUSD category still to confirm.)
+- [x] Receipt verification and paid-check.
+- [x] Stretch: allowance contract + tests.
 
 ### Person B — Web app (`apps/web`)
 - Scaffold, design system, **Banner** (slides, repo, EMBER2026 address).
@@ -180,6 +213,7 @@ verifyReceipt(txid, req) -> { ok, reasons[] }
 - **Rules checklist before submitting:** banner links work; slides use the Widget Factory template; repo public; EMBER2026 address shown; demo works on a fresh phone and browser in under 2 minutes; Telegram confirmation done.
 
 ## Open items to confirm on day 1
-- PUSD token category ID and decimals (from paryonusd.com / ParyonUSD Telegram).
-- Which wallets the judges use and whether they support WizardConnect (ask in BLAZE Telegram).
-- Working public WizardConnect relays and Fulcrum WSS servers for mainnet and Chipnet.
+- [ ] PUSD token category ID and decimals (from paryonusd.com / ParyonUSD Telegram).
+- [ ] Which wallets the judges use and whether they support WizardConnect (ask in BLAZE Telegram).
+- [ ] Working public WizardConnect relays.
+- [x] Fulcrum WSS servers: `bch.imaginary.cash`, `bch.loping.net` (mainnet) and `chipnet.imaginary.cash`, `chipnet.bch.ninja` (Chipnet) answered a live check on Nov 19.
