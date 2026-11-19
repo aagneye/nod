@@ -1,0 +1,52 @@
+pragma cashscript ^0.14.0;
+
+/**
+ * Allowance: an agent may pay one vendor up to `capSats` per `periodBlocks`.
+ * The owner can withdraw everything at any time by adding one of their own P2PKH coins
+ * (WizardConnect can sign that coin; this contract input needs no signature).
+ *
+ * Each agent spend recreates the contract UTXO, whose age resets to 0, so the next spend
+ * must wait another `periodBlocks` (relative timelock via this.age / OP_CHECKSEQUENCEVERIFY).
+ */
+contract Allowance(
+    bytes20 ownerPkh,
+    pubkey agentPk,
+    bytes20 vendorPkh,
+    int capSats,
+    int periodBlocks
+) {
+    function agentSpend(sig agentSig) {
+        require(checkSig(agentSig, agentPk));
+        require(this.age >= periodBlocks);
+
+        // Only the contract coin is spent, so the agent cannot mix in other contract coins.
+        require(tx.inputs.length == 1);
+        // Vendor payment, plus the remainder, plus an optional OP_RETURN memo.
+        require(tx.outputs.length <= 3);
+
+        // Output 0 pays the vendor at most the cap.
+        require(tx.outputs[0].lockingBytecode == new LockingBytecodeP2PKH(vendorPkh));
+        require(tx.outputs[0].value <= capSats);
+        require(tx.outputs[0].tokenCategory == 0x);
+
+        // Output 1 returns the remainder to this same contract; the fee is capped at 2000 sats.
+        require(tx.outputs[1].lockingBytecode == tx.inputs[this.activeInputIndex].lockingBytecode);
+        require(tx.outputs[1].tokenCategory == 0x);
+        int inValue = tx.inputs[this.activeInputIndex].value;
+        require(tx.outputs[1].value >= inValue - tx.outputs[0].value - 2000);
+    }
+
+    function ownerWithdraw(int walletInputIndex) {
+        // Exactly two inputs: this contract coin and one coin from the owner's wallet.
+        require(tx.inputs.length == 2);
+        require(walletInputIndex != this.activeInputIndex);
+        bytes ownerLock = new LockingBytecodeP2PKH(ownerPkh);
+        require(tx.inputs[walletInputIndex].lockingBytecode == ownerLock);
+
+        // Everything goes to the owner in one output; the fee is capped at 5000 sats.
+        require(tx.outputs.length == 1);
+        require(tx.outputs[0].lockingBytecode == ownerLock);
+        int inValue = tx.inputs[0].value + tx.inputs[1].value;
+        require(tx.outputs[0].value >= inValue - 5000);
+    }
+}
