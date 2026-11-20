@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
-import { decodeMemo, hashRequest, verifyReceipt } from '@nod/protocol';
+import { useLocation, useParams } from 'react-router-dom';
+import { decodeMemo, hashRequest, verifyReceipt, type SignedNodRequest } from '@nod/protocol';
 import { decodeTransaction, hexToBin } from '@bitauth/libauth';
 import { ChainOnlyReceipt, ReceiptCard, type VerifiedEntry } from '../components/ReceiptCard';
 import { Card, Spinner } from '../components/ui';
 import { getChain } from '../lib/chain';
-import { loadApproved } from '../lib/approvals';
+import { loadApproved, saveApproved } from '../lib/approvals';
+import { requestsFromHash } from '../lib/receiptLink';
 
 type ViewState =
   | { phase: 'loading' }
@@ -16,9 +17,14 @@ type ViewState =
 
 const errorText = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
-/** /tx/:txid — the receipt: verify the payment against the request(s) we approved. */
+/**
+ * /tx/:txid[#payload…] — the receipt: verify the payment against the request(s)
+ * that were approved. The requests come from the URL fragment (shareable, works
+ * in a fresh browser) or, failing that, from this tab's sessionStorage.
+ */
 export default function ReceiptPage() {
   const { txid = '' } = useParams();
+  const { hash } = useLocation();
   const [view, setView] = useState<ViewState>({ phase: 'loading' });
 
   useEffect(() => {
@@ -31,7 +37,17 @@ export default function ReceiptPage() {
       setView({ phase: 'loading' });
       try {
         const chain = await getChain();
-        const approved = loadApproved(txid);
+
+        const fromUrl = requestsFromHash(hash);
+        let approved: SignedNodRequest[] | null = null;
+        const sigValid = new Map<string, boolean>();
+        if (fromUrl && fromUrl.length > 0) {
+          approved = fromUrl.map((r) => r.signed);
+          for (const r of fromUrl) sigValid.set(r.signed.req.id, r.valid);
+          saveApproved(txid, approved);
+        } else {
+          approved = loadApproved(txid);
+        }
 
         if (approved && approved.length > 0) {
           const batchHashes = approved.length > 1 ? approved.map((s) => hashRequest(s.req)) : undefined;
@@ -40,13 +56,13 @@ export default function ReceiptPage() {
             const check = await verifyReceipt(chain, txid, signed.req, hashRequest(signed.req), {
               ...(batchHashes ? { batchHashes } : {}),
             });
-            entries.push({ signed, check });
+            entries.push({ signed, check, signatureValid: sigValid.get(signed.req.id) });
           }
           if (!cancelled) setView({ phase: 'verified', entries });
           return;
         }
 
-        // No stored request (fresh browser or shared link): show what the chain says.
+        // No request available (bare /tx/<txid> link): show what the chain says.
         let hex: string;
         try {
           hex = await chain.getTransactionHex(txid);
@@ -71,19 +87,37 @@ export default function ReceiptPage() {
     return () => {
       cancelled = true;
     };
-  }, [txid]);
+  }, [txid, hash]);
 
   if (view.phase === 'loading') {
     return (
-      <Card className="mx-auto max-w-2xl flex items-center gap-3 py-8">
+      <Card className="mx-auto flex max-w-2xl items-center gap-3 py-8">
         <Spinner />
-        <p className="text-sm text-muted">Verifying transaction {txid.slice(0, 12)}…</p>
+        <p className="min-w-0 text-sm text-muted">Verifying transaction {txid.slice(0, 12)}…</p>
       </Card>
     );
   }
-  if (view.phase === 'verified') return <ReceiptCard txid={txid} entries={view.entries} />;
-  if (view.phase === 'chain') return <ChainOnlyReceipt txid={txid} memos={view.memos} />;
-  if (view.phase === 'nomemo') return <ChainOnlyReceipt txid={txid} noMemo />;
+  if (view.phase === 'verified') {
+    return (
+      <div className="mx-auto max-w-2xl">
+        <ReceiptCard txid={txid} entries={view.entries} />
+      </div>
+    );
+  }
+  if (view.phase === 'chain') {
+    return (
+      <div className="mx-auto max-w-2xl">
+        <ChainOnlyReceipt txid={txid} memos={view.memos} />
+      </div>
+    );
+  }
+  if (view.phase === 'nomemo') {
+    return (
+      <div className="mx-auto max-w-2xl">
+        <ChainOnlyReceipt txid={txid} noMemo />
+      </div>
+    );
+  }
 
   return (
     <Card className="mx-auto max-w-2xl">
