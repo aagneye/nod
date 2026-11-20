@@ -55,7 +55,11 @@ export function readConfig(env: Env = process.env): ServerConfig {
   }
   const sats = Number((env.NOD_DEMO_SATS ?? '').trim() || DEFAULT_SATS);
   if (!Number.isSafeInteger(sats) || sats < 546) throw new Error('NOD_DEMO_SATS must be an integer >= 546');
-  const vendor = (env.NOD_DEMO_VENDOR ?? '').trim() || null;
+  const vendor = (env.NOD_DEMO_VENDOR ?? '').trim().toLowerCase() || null;
+  const prefix = network === 'mainnet' ? 'bitcoincash:' : 'bchtest:';
+  if (vendor && !vendor.startsWith(prefix)) {
+    throw new Error(`NOD_DEMO_VENDOR must be a ${prefix} address on ${network}`);
+  }
   const publicUrl = (env.NOD_PUBLIC_URL ?? '').trim().replace(/\/+$/, '') || null;
   return { network, agentKey, agentPubkey: pubkeyHex(agentKey), ephemeral, vendor, sats, publicUrl };
 }
@@ -87,8 +91,14 @@ export function demoVendor(cfg: ServerConfig): string | null {
  * and that key must be NOD_DEMO_AGENT_KEY's when one is set. Ephemeral keys differ between
  * serverless instances, so the agent key cannot be pinned in that case.
  */
-export function isDemoVendor(cfg: ServerConfig, req: { vendor: string; agent: string }): boolean {
-  if (cfg.vendor) return req.vendor === cfg.vendor;
+export function isDemoVendor(
+  cfg: ServerConfig,
+  req: { vendor: string; agent: string; amount?: unknown },
+): boolean {
+  // Only deliver for the advertised price, never for a self-signed cheaper request.
+  const amount = req.amount as { sats?: unknown } | undefined;
+  if (amount !== undefined && !(typeof amount.sats === 'number' && amount.sats >= cfg.sats)) return false;
+  if (cfg.vendor) return req.vendor === cfg.vendor && (cfg.ephemeral || req.agent === cfg.agentPubkey);
   if (cfg.network === 'mainnet') return false;
   if (!cfg.ephemeral && req.agent !== cfg.agentPubkey) return false;
   return req.vendor === p2pkhAddress(req.agent, cfg.network);

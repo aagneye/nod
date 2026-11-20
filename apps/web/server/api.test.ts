@@ -147,6 +147,21 @@ describe('POST /api/vendor/buy', () => {
     expect(res.status).toBe(400);
   });
 
+  it('400 for a cheaper or foreign-signed request to the demo vendor', async () => {
+    const deps = { env, connectChain: async () => fakeChain() };
+    const cheap = createRequest(
+      { agentName: 'x', vendor: VENDOR, amount: { sats: 546 }, purpose: 'p', expiry: 2e9 },
+      hexToBin(KEY),
+    );
+    expect((await handleVendorBuy(post({ txid: TXID, signed: cheap }), deps)).status).toBe(400);
+    const stranger = generateAgentKey();
+    const foreign = createRequest(
+      { agentName: 'x', vendor: VENDOR, amount: { sats: 2000 }, purpose: 'p', expiry: 2e9 },
+      stranger.privateKey,
+    );
+    expect((await handleVendorBuy(post({ txid: TXID, signed: foreign }), deps)).status).toBe(400);
+  });
+
   it('402 when the transaction is not found (unpaid)', async () => {
     const signed = await demoSigned(env);
     const chain = fakeChain();
