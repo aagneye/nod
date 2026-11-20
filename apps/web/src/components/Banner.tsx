@@ -126,6 +126,23 @@ export function Banner() {
           <span className="hidden font-bold tracking-[0.16em] text-faint uppercase sm:inline">
             Submission
           </span>
+          {/* The header nav hides below md; the hackathon banner must still link both. */}
+          <a
+            href={SLIDES_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="font-bold tracking-[0.16em] text-muted uppercase underline-offset-2 hover:text-ink hover:underline md:hidden"
+          >
+            Slides ↗
+          </a>
+          <a
+            href={REPO_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="font-bold tracking-[0.16em] text-muted uppercase underline-offset-2 hover:text-ink hover:underline md:hidden"
+          >
+            Repo ↗
+          </a>
           <div className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-1">
             {EMBER_ADDRESS ? (
               <>
