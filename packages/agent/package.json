@@ -1,0 +1,28 @@
+{
+  "name": "@nod/agent",
+  "version": "0.1.0",
+  "description": "Nod agent tool: CLI and MCP server that let any AI agent ask a human to approve a BCH payment",
+  "type": "module",
+  "bin": {
+    "nod-agent": "./dist/cli.mjs",
+    "nod": "./dist/cli.mjs",
+    "nod-mcp": "./dist/mcp.mjs"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@bitauth/libauth": "^3.0.0",
+    "@nod/protocol": "*"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vitest": "^5.1.1"
+  },
+  "license": "MIT"
+}
