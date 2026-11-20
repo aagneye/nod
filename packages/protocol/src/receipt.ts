@@ -20,6 +20,12 @@ export interface ReceiptOptions {
    * Needed to accept a batch payment; without it, batch memos never match.
    */
   batchHashes?: Uint8Array[];
+  /**
+   * All requests in the batch, when known. Each request must then have its own vendor output:
+   * if k requests share a vendor and amount, the transaction needs k such outputs.
+   * Without it, one output could "pay" several identical requests.
+   */
+  batchRequests?: NodRequest[];
 }
 
 export interface FindPaymentOptions extends ReceiptOptions {
@@ -51,7 +57,7 @@ export function checkTransaction(
     reasons.push('vendor output missing');
   } else {
     const amount = req.amount;
-    const paid = vendorOutputs.some((o) => {
+    const matching = vendorOutputs.filter((o) => {
       if (isTokenAmount(amount)) {
         return (
           o.token !== undefined &&
@@ -61,8 +67,13 @@ export function checkTransaction(
         );
       }
       return o.token === undefined && o.valueSatoshis === BigInt(amount.sats);
-    });
-    if (!paid) reasons.push('amount mismatch');
+    }).length;
+    // Identical (vendor, amount) requests are interchangeable, so counting per class
+    // is exactly a one-to-one match of requests to outputs.
+    const key = paymentKey(req);
+    const needed = opts.batchRequests ? opts.batchRequests.filter((r) => paymentKey(r) === key).length : 1;
+    if (matching === 0) reasons.push('amount mismatch');
+    else if (matching < needed) reasons.push(`batch underpaid: ${needed} outputs needed, ${matching} found`);
   }
 
   // Memo.
@@ -76,6 +87,9 @@ export function checkTransaction(
 
   return { ok: reasons.length === 0, reasons };
 }
+
+const paymentKey = (r: NodRequest): string =>
+  `${r.vendor.toLowerCase()}|${isTokenAmount(r.amount) ? `${r.amount.token.toLowerCase()}:${r.amount.units}` : `sats:${r.amount.sats}`}`;
 
 function memoCommits(memo: Memo, requestHash: Uint8Array, opts: ReceiptOptions): boolean {
   if (memo.kind === 'single') return binsAreEqual(memo.hash, requestHash);

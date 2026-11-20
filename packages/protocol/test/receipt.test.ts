@@ -141,6 +141,38 @@ describe('verifyReceipt', () => {
     // Wrong batch list.
     expect((await verifyReceipt(chain, txid, req, reqHash, { batchHashes: [reqHash] })).ok).toBe(false);
   });
+
+  it('needs one output per identical batch request when the batch requests are known', async () => {
+    const reqA = { ...req, id: 'aa'.repeat(16) };
+    const reqB = { ...req, id: 'bb'.repeat(16) };
+    const hashes = [h('A'), h('B')];
+    const chain = new FakeChain();
+    // Batch memo commits both requests, but only one 2500-sat output pays the vendor.
+    const { fakeHashBatch } = await import('./helpers.js');
+    const underpaid = chain.add(
+      pay(
+        [
+          { vendor: req.vendor, amount: req.amount, requestHash: hashes[0]! },
+          { vendor: other.address, amount: { sats: 600 }, requestHash: h('filler') },
+        ],
+        fakeHashBatch(hashes),
+      ),
+      100,
+    );
+    const opts = { batchHashes: hashes, batchRequests: [reqA, reqB] };
+    const r = await verifyReceipt(chain, underpaid, reqB, hashes[1]!, opts);
+    expect(r.ok).toBe(false);
+    expect(r.reasons).toEqual(['batch underpaid: 2 outputs needed, 1 found']);
+
+    const paid = chain.add(
+      pay([
+        { vendor: req.vendor, amount: req.amount, requestHash: hashes[0]! },
+        { vendor: req.vendor, amount: req.amount, requestHash: hashes[1]! },
+      ]),
+      101,
+    );
+    expect(await verifyReceipt(chain, paid, reqB, hashes[1]!, opts)).toEqual({ ok: true, reasons: [] });
+  });
 });
 
 describe('findPayment', () => {

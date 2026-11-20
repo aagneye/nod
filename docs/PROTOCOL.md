@@ -94,7 +94,7 @@ A transaction pays request `R` (hash `H`) when both hold:
    - for `{token, units}`: the output carries a fungible token (no NFT) of category `token` with amount equal to `units` exactly.
 2. **Memo.** The transaction has a Nod memo that commits `H`:
    - single memo: memo hash equals `H`;
-   - batch memo: the checker knows the full list of request hashes in the batch, `H` is in that list, and the memo hash equals `hashBatch(list)`. Each request in the batch has its own vendor output.
+   - batch memo: the checker knows the full list of request hashes in the batch, `H` is in that list, and the memo hash equals `hashBatch(list)`. Each request in the batch has its own vendor output: when the checker also knows the batch requests, k requests with the same vendor and amount need k matching outputs (`batchRequests` in the reference `verifyReceipt`).
 
 Both conditions must hold in the same transaction. Overpaying or underpaying does not match.
 

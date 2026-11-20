@@ -54,7 +54,7 @@ export default function ReceiptPage() {
           const entries: VerifiedEntry[] = [];
           for (const signed of approved) {
             const check = await verifyReceipt(chain, txid, signed.req, hashRequest(signed.req), {
-              ...(batchHashes ? { batchHashes } : {}),
+              ...(batchHashes ? { batchHashes, batchRequests: approved.map((s) => s.req) } : {}),
             });
             entries.push({ signed, check, signatureValid: sigValid.get(signed.req.id) });
           }
