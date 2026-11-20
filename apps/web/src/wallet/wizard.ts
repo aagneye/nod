@@ -7,6 +7,7 @@ import {
   type SpendableUtxo,
 } from '@nod/protocol';
 import type { DappConnectionManager } from '@wizardconnect/dapp';
+import { sourceOutputToRelay } from '@wizardconnect/core/hdwalletv1-serialize';
 import { addressFromPubkey } from '../lib/address';
 import { getChain } from '../lib/chain';
 import { NETWORK } from '../config';
@@ -21,8 +22,10 @@ const SCAN = [
 export function walletAddresses(manager: DappConnectionManager): { receive: string; change: string } {
   const receiveKey = manager.getPubkey(0, 0n);
   if (!receiveKey) throw new Error('Wallet is not ready yet — wait for the connection to finish.');
-  const changeKey = manager.getPubkey(1, 0n) ?? receiveKey;
-  return { receive: addressFromPubkey(receiveKey), change: addressFromPubkey(changeKey) };
+  // Change returns to the receive address: single-address wallets may not watch
+  // the HD change path, and a judge must see their change land where they expect.
+  const receive = addressFromPubkey(receiveKey);
+  return { receive, change: receive };
 }
 
 /**
@@ -42,18 +45,29 @@ export async function collectUtxos(manager: DappConnectionManager): Promise<Spen
   }
 
   const found: SpendableUtxo[] = [];
+  let failures = 0;
+  let lastError: unknown;
   const BATCH = 8;
   for (let i = 0; i < jobs.length; i += BATCH) {
     const batch = jobs.slice(i, i + BATCH);
     const results = await Promise.all(
       batch.map(async (job) => ({
         job,
-        utxos: await chain.getUtxos(job.address).catch(() => []),
+        utxos: await chain.getUtxos(job.address).catch((e: unknown) => {
+          failures++;
+          lastError = e;
+          return [];
+        }),
       })),
     );
     for (const { job, utxos } of results) {
       for (const utxo of utxos) found.push({ ...utxo, path: job.path });
     }
+  }
+  // An empty result because the server dropped is not "no funds": say so.
+  if (found.length === 0 && failures > 0) {
+    const reason = lastError instanceof Error ? lastError.message : String(lastError);
+    throw new Error(`Could not read your balance from the BCH server (${reason}). Please try again.`);
   }
   return found;
 }
@@ -80,7 +94,8 @@ export async function signAndBroadcast(
   const response = await manager.signTransaction({
     transaction: {
       transaction: built.txHex,
-      sourceOutputs: built.sourceOutputs,
+      // The relay JSON-encodes the message: bytes must become hex and bigints a tagged string.
+      sourceOutputs: built.sourceOutputs.map((so) => sourceOutputToRelay(so)),
       userPrompt,
       broadcast: true,
     },
