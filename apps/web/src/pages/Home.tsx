@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { fetchDemoLink } from '../lib/api';
+import { fetchDemoAgent, type DemoLink } from '../lib/api';
 import { NETWORK } from '../config';
 import { getChain, getChainStatus, onChainStatus, networkLabel, type ChainStatus } from '../lib/chain';
-import { ErrorNote, GhostButton, PrimaryButton, Spinner } from '../components/ui';
+import { ErrorNote, GhostButton, NetworkBadge, PrimaryButton, Spinner } from '../components/ui';
 
 /** The three promises, as numbered feature columns. */
 const STEPS = [
@@ -157,23 +157,72 @@ function StageBlock() {
   );
 }
 
+/** Seconds until `expiresAt`, accepting unix seconds or milliseconds. */
+const expiresInSeconds = (expiresAt: number): number =>
+  (expiresAt > 1e12 ? expiresAt / 1000 : expiresAt) - Date.now() / 1000;
+
 /** Home: editorial landing — hero, ticker, three moves, verify band, CTA. */
 export default function Home() {
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [prefetched, setPrefetched] = useState<DemoLink | null>(null);
+
+  // Prefetch one demo request so the button is instant and any server
+  // warning (e.g. an ephemeral agent key) can be shown before the click.
+  useEffect(() => {
+    let cancelled = false;
+    fetchDemoAgent().then(
+      (demo) => {
+        if (!cancelled) setPrefetched(demo);
+      },
+      () => {
+        /* endpoint absent or down: the button reports it on click */
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  /** Same-origin links stay in the SPA (keeps the wallet session warm); others do a full load. */
+  const openLink = (link: string) => {
+    try {
+      const url = new URL(link, window.location.href);
+      if (url.origin === window.location.origin) {
+        navigate(`${url.pathname}${url.search}${url.hash}`);
+        return;
+      }
+    } catch {
+      /* fall through */
+    }
+    window.location.href = link;
+  };
 
   const askAgent = async () => {
     setBusy(true);
     setError(null);
     try {
-      const link = await fetchDemoLink();
-      window.location.href = link;
+      // Reuse the prefetched request only while it has plenty of time left.
+      const fresh =
+        prefetched && (prefetched.expiresAt === undefined || expiresInSeconds(prefetched.expiresAt) > 120)
+          ? prefetched
+          : null;
+      const demo = fresh ?? (await fetchDemoAgent());
+      setPrefetched(null);
+      openLink(demo.link);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+    } finally {
       setBusy(false);
     }
   };
+
+  const tryDemoLabel = (
+    <>
+      Try the demo <span aria-hidden="true">↓</span>
+    </>
+  );
 
   const tickerItems = [...TICKER, ...TICKER];
 
@@ -192,37 +241,62 @@ export default function Home() {
             <span className="text-accent">BCH settles.</span>
           </h1>
 
+          <p className="mt-6 max-w-xl text-lg leading-snug font-semibold text-ink">
+            AI agents can ask to spend BCH. Only your nod, in your own wallet, pays.
+          </p>
+
+          {/* The whole product in one glance. */}
+          <ol className="mt-5 flex flex-wrap items-center gap-x-2 gap-y-2 text-[11px] font-bold tracking-[0.14em] uppercase">
+            <li className="border border-ink bg-acid px-2.5 py-1.5 text-[#171713]">1 · Agent asks</li>
+            <li aria-hidden="true" className="text-accent">
+              →
+            </li>
+            <li className="border border-ink bg-accent px-2.5 py-1.5 text-white">2 · You nod</li>
+            <li aria-hidden="true" className="text-accent">
+              →
+            </li>
+            <li className="border border-ink bg-mint px-2.5 py-1.5 text-[#14532d]">3 · BCH settles</li>
+          </ol>
+
           <p className="mt-6 max-w-xl text-[0.98rem] leading-relaxed text-muted">
-            AI agents need to buy things — API calls, data, compute — but they should never hold your keys or your
-            money. The agent signs a request. You check it. One tap sends the payment straight to the vendor on
-            Bitcoin Cash, with an on-chain receipt that proves which request was paid.
+            The agent signs a request (vendor, amount, purpose, expiry) but holds no money. You check it, approve once
+            in your wallet, and the vendor is paid directly on Bitcoin Cash, with an on-chain receipt proving which
+            request was paid.
           </p>
 
           <div className="mt-8 flex flex-wrap items-center gap-6">
-            <PrimaryButton onClick={() => void askAgent()} disabled={busy}>
+            <PrimaryButton onClick={() => void askAgent()} disabled={busy} className="max-sm:w-full">
               {busy ? (
                 <>
                   <Spinner className="size-3.5 border-ink/30 border-t-ink" />
                   Asking the agent…
                 </>
               ) : (
-                <>
-                  Ask the agent <span aria-hidden="true">↓</span>
-                </>
+                tryDemoLabel
               )}
             </PrimaryButton>
             <GhostButton onClick={() => navigate('/batch')}>
               Pay a batch <span aria-hidden="true">↗</span>
             </GhostButton>
           </div>
+          <p className="mt-3 text-xs text-faint">
+            A demo agent signs a real request for a small{' '}
+            {NETWORK === 'mainnet' ? 'mainnet BCH' : 'chipnet test-coin'} payment (one live weather report). You
+            review it before anything is paid.
+          </p>
           <div className="mt-4">
             <ErrorNote>{error}</ErrorNote>
           </div>
+          {prefetched?.warning ? (
+            <p className="mt-3 text-[10px] tracking-[0.08em] text-faint" title="Set NOD_DEMO_AGENT_KEY on the server">
+              Note from the demo agent: {prefetched.warning} (signatures are real, but the agent key changes on
+              server restart).
+            </p>
+          ) : null}
 
-          <p className="mt-8 text-[10px] font-bold tracking-[0.16em] text-faint uppercase">
-            Demo <span className="mx-2 text-accent">/</span>{' '}
-            {NETWORK === 'mainnet' ? 'BCH mainnet' : 'Chipnet'} <span className="mx-2 text-accent">/</span> Real
-            wallet signature
+          <p className="mt-8 flex flex-wrap items-center gap-x-2 gap-y-2 text-[10px] font-bold tracking-[0.16em] text-faint uppercase">
+            <NetworkBadge network={NETWORK} />
+            <span className="mx-1 text-accent">/</span> Real wallet signature
           </p>
         </div>
 
@@ -348,9 +422,7 @@ export default function Home() {
                   Asking…
                 </>
               ) : (
-                <>
-                  Ask the agent <span aria-hidden="true">↓</span>
-                </>
+                tryDemoLabel
               )}
             </PrimaryButton>
             <Link

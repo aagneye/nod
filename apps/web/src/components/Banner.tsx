@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { EMBER_ADDRESS, REPO_URL, SLIDES_URL } from '../config';
+import { EMBER_ADDRESS, NETWORK, REPO_URL, SLIDES_URL } from '../config';
+import { copyText } from '../lib/clipboard';
+import { NetworkBadge } from './ui';
 import { networkLabel, onChainStatus, type ChainStatus } from '../lib/chain';
 import { shortAddress } from '../lib/address';
 import { toggleTheme, useDarkTheme } from '../lib/theme';
@@ -56,7 +58,7 @@ export function Banner() {
   const copyEmber = async () => {
     if (!EMBER_ADDRESS) return;
     try {
-      await navigator.clipboard.writeText(EMBER_ADDRESS);
+      if (!(await copyText(EMBER_ADDRESS))) return;
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
@@ -119,6 +121,7 @@ export function Banner() {
       {/* Submission-gate row: slides, repo, EMBER2026 address. */}
       <div className="border-t border-line bg-soft/60">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-5 gap-y-1 px-4 py-1.5 text-[10px]">
+          <NetworkBadge network={NETWORK} />
           <span className="font-bold tracking-[0.18em] text-accent uppercase">Blaze 2026</span>
           <span className="hidden font-bold tracking-[0.16em] text-faint uppercase sm:inline">
             Submission
