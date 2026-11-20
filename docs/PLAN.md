@@ -17,13 +17,13 @@ Update this section and the boxes in `docs/STEPS.md` whenever a task is finished
 | Area | Owner | Status |
 |---|---|---|
 | Repo setup, plan, steps, protocol spec | Aagneye | ✅ Done |
-| Protocol and chain (`packages/protocol`) | Aagneye | ✅ Done: 54 tests green |
+| Protocol and chain (`packages/protocol`) | Aagneye | ✅ Done: 55 tests green (+1 skipped) |
 | Allowance contract (`contracts/`) | Aagneye | ✅ Done: 9 tests green |
-| Web app (`apps/web`) | Person B | 🟨 Pages, wallet, banner coded; builds and typechecks. Not tested with a real wallet; vendor item on receipt missing (see STEPS "Remaining build plan") |
-| Agent tool, demo API, launch | Person C | ⬜ Not started; split into WP1 (API + deploy) and WP3 (agent + docs) in STEPS |
-| First Chipnet payment end-to-end | A + B | ⬜ Not started (needs web app + wallet) |
-| First mainnet payment end-to-end | A + B + C | ⬜ Not started |
-| DoraHacks submission | Person C | ⬜ Not started |
+| Web app (`apps/web`) | Person B | 🟨 Built: approval, receipt + vendor item, batch, banner, wallet (relay-serialized `sourceOutputs`), 375px. Not yet signed with a real wallet |
+| Agent tool, demo API, launch | Person C | 🟨 Built: `/api/demo-agent`, `/api/vendor/buy` (15 tests), Vercel Build Output bundling, CLI + MCP server (12 tests), README, DEMO, SUBMISSION drafts. Not deployed |
+| First Chipnet payment end-to-end | A + B | ⬜ Next step: needs a real WizardConnect wallet (launch checklist step 1) |
+| First mainnet payment end-to-end | A + B + C | ⬜ After Vercel deploy + env vars |
+| DoraHacks submission | Person C | ⬜ Text ready in `docs/SUBMISSION.md`; needs EMBER2026 address, slides, video, posts |
 
 **Done (Person A):**
 - [x] Request format: canonical JSON, sha256 hash, Schnorr sign/verify, base64url links (`src/request.ts`)
@@ -150,7 +150,7 @@ nod/
 │           receipt.ts (verifyReceipt, findPayment)
 │           constants.ts (PUSD category, servers, memo prefix)
 ├─ packages/agent/               MCP server + CLI
-│  └─ src/  mcp.ts (tools: create_request, check_status, list_requests), cli.ts, keys.ts
+│  └─ src/  mcp.ts (tools: nod_request_payment, nod_payment_status, nod_list_requests), cli.ts, keys.ts
 ├─ contracts/                    allowance.cash, allowance.test.ts (stretch)
 ├─ api/                          Vercel functions
 │  ├─ demo-agent.ts              creates a signed demo request
@@ -188,7 +188,7 @@ verifyReceipt(txid, req) -> { ok, reasons[] }
 
 ### Person C — Agent, demo and launch (`packages/agent`, `api/`, submission)
 - **Today:** register on DoraHacks, join Telegram, confirm project is real, look for a roll-call teammate.
-- MCP server + CLI (`create_request`, `check_status`).
+- MCP server + CLI (`nod_request_payment`, `nod_payment_status`).
 - Demo agent and demo vendor endpoints; Vercel deploy; Upstash inbox (optional).
 - Widget Factory slides, README, 60–90s demo video, DoraHacks submission.
 - X and Telegram posts (for Community Choice and to escape the low-priority queue).

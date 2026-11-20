@@ -109,20 +109,20 @@ Folder: `apps/web/src/`. Import all protocol logic from `@nod/protocol`.
   Files: `apps/web/src/components/Banner.tsx`
   Top-of-page bar on every route: link to slides (Widget Factory deck), link to public repo, the CashTokens address for **EMBER2026** votes (with copy button).
   Done when: banner shows on all routes at phone and desktop width; all three items work.
-  Status (Nov 20): code done (env-driven `VITE_SLIDES_URL`, `VITE_EMBER2026_ADDRESS`); open until the real deck URL and EMBER2026 address are set on the live site.
+  Status (Nov 20): code done; open until `VITE_SLIDES_URL` and `VITE_EMBER2026_ADDRESS` are set on Vercel before the build (otherwise the banner shows a placeholder).
 
 - [ ] **B3 · P0 · WizardConnect connect (biggest risk, do early)**
   Files: `apps/web/src/wallet/wizard.ts`, `apps/web/src/components/WalletButton.tsx`, `apps/web/src/main.tsx` (provider)
   Use `@wizardconnect/react`: `useWizardConnect`, `WizardConnectQRDialog`. Read the `@wizardconnect/dapp` types first (especially `sourceOutputs`). Get buyer addresses from `manager.getPubkey(0, 0n)` and derive the cashaddr (`bchtest:` on Chipnet).
   Done when: on **Chipnet**, Paytaca or Cashonize scans the QR, connects, and the app shows the wallet's address.
-  Status (Nov 20): code done (`wallet/context.tsx`, `WalletButton.tsx`, `lib/address.ts`); not yet tested with a real wallet.
+  Status (Nov 20): code done, incl. `wiz://` open-in-wallet deep link for phones (unverified that wallets handle it); open until a real wallet connects on Chipnet.
 
 - [ ] **B4 · P0 · Sign and broadcast on Chipnet**
   Files: `apps/web/src/wallet/wizard.ts`
   `signAndBroadcast({ txHex, sourceOutputs, inputPaths, userPrompt })` calling
   `manager.signTransaction({ transaction: { transaction: txHex, sourceOutputs, userPrompt, broadcast: true }, inputPaths })`. Use a hand-built or mock tx until A7 lands.
   Done when: one Chipnet tx is approved on the phone and its txid appears in the app.
-  Status (Nov 20): code done (`signAndBroadcast` with self-broadcast fallback); no real Chipnet tx yet.
+  Status (Nov 20): code done; `sourceOutputs` now converted with `sourceOutputToRelay` from `@wizardconnect/core` (fixed a bigint crash); change goes to the receive address. Open until a real Chipnet sign.
 
 ### Nov 20
 
@@ -130,24 +130,24 @@ Folder: `apps/web/src/`. Import all protocol logic from `@nod/protocol`.
   Files: `apps/web/src/pages/Request.tsx`, `apps/web/src/components/RequestCard.tsx`
   Read `#payload`, `decodeLink`, show agent name, vendor, amount, purpose, expiry countdown, "signature valid" badge; block if invalid, expired, or `findPayment` finds it already paid. **Nod** button → `getUtxos` → `buildPayment` → `signAndBroadcast` → go to `/tx/:txid`.
   Done when: a CLI-made Chipnet link is approved end-to-end from this page.
-  Status (Nov 20): code done; paid check scans up to 200 vendor txs one by one (slow once the demo vendor has history), fix in WP2. Untested with a wallet.
+  Status (Nov 20): code done; paid check capped at 25 txs + 8 s timeout, network badge. Open until a real wallet approves a link.
 
-- [ ] **B6 · P0 · Receipt page**
+- [x] **B6 · P0 · Receipt page**
   Files: `apps/web/src/pages/Receipt.tsx`, `apps/web/src/components/ReceiptCard.tsx`
   Shows txid, explorer link (`EXPLORER_TX_URL`), result of `verifyReceipt` ("request matches payment" or reasons), and the delivered item from `api/vendor/buy` when available.
   Done when: reloading `/tx/:txid` for a real tx shows OK; a tampered request shows the failure reasons.
-  Status (Nov 20): verify + explorer done (verifies only from sessionStorage); delivered item from `/api/vendor/buy` missing (WP2).
+  Status (Nov 20): done in code: vendor delivery panel with 402 retry, shareable receipts `/tx/<txid>#<payload>`.
 
-- [ ] **B7 · P0 · Home page and demo button**
+- [x] **B7 · P0 · Home page and demo button**
   Files: `apps/web/src/pages/Home.tsx`, `apps/web/src/lib/api.ts`
   One-line pitch, **"Ask the agent to buy something"** → calls `api/demo-agent` → navigates to the returned link.
   Done when: a judge on a fresh browser reaches the approval page in one tap.
-  Status (Nov 20): button and `lib/api.ts` done; `/api/demo-agent` does not exist yet (WP1).
+  Status (Nov 20): done: Home button calls `/api/demo-agent` (WP1) and opens the approval page.
 
 - [ ] **B8 · P0 · Switch to mainnet**
   Files: `apps/web/src/wallet/wizard.ts`, env config (`VITE_NETWORK`)
   Done when: same flow works with a ~$0.01 mainnet request (with C, see Integration checkpoints).
-  Status (Nov 20): `VITE_NETWORK=mainnet` switch exists in `config.ts`; not run on mainnet.
+  Status (Nov 20): `VITE_NETWORK=mainnet` switch in `config.ts`; open until a real mainnet payment.
 
 ### Nov 21
 
@@ -155,19 +155,19 @@ Folder: `apps/web/src/`. Import all protocol logic from `@nod/protocol`.
   Files: `apps/web/src/pages/Batch.tsx`
   Several request links → list with total → one approval → one tx with batch memo → receipt.
   Done when: a 3-request Chipnet batch is approved in one wallet prompt and each request verifies.
-  Status (Nov 20): code done (paste links, total, one tx, batch receipt); untested with a wallet.
+  Status (Nov 20): code done; batch receipts require one output per identical request (`batchRequests`). No already-paid check on the batch page (low). Open until a real 3-request batch.
 
 - [ ] **B10 · P1 · Fallback QR**
   Files: `apps/web/src/components/FallbackQR.tsx`, `apps/web/src/pages/Request.tsx`
   For wallets without WizardConnect: plain `bitcoincash:<vendor>?amount=<bch>` QR; poll vendor address and match by address + amount; label it "no memo, matched by amount".
   Done when: paying the QR from a normal wallet moves the page to a receipt.
-  Status (Nov 20): not started. Cut for the demo (WizardConnect is required by the rules anyway).
+  Status (Nov 20): not started; cut (WizardConnect is required by the rules).
 
-- [ ] **B11 · P1 · Mobile polish, loading and error states**
+- [x] **B11 · P1 · Mobile polish, loading and error states**
   Files: `apps/web/src/pages/*`, `apps/web/src/components/*`
   Spinners for connect/sign/broadcast, clear errors (wallet rejected, not enough funds, expired, already paid), 375px layout, no horizontal scroll.
   Done when: full demo works on a phone browser with no layout breaks; each error case shows a readable message.
-  Status (Nov 20): partial (spinners, rejected/expired/paid errors exist; no insufficient-funds mapping; 375px not checked). WP2.
+  Status (Nov 20): done in code: insufficient-funds message, 375px layout, banner links visible on phones. Re-check on a real phone in the launch checklist.
 
 - [ ] **B12 · P3 · Allowance page (stretch)**
   Files: `apps/web/src/pages/Allowance.tsx`
@@ -199,28 +199,33 @@ Folders: `packages/agent/src/`, `api/`, submission material. Import from `@nod/p
   Files: `vercel.json` (if needed), Vercel project settings
   Public repo, Vercel project pointing at `apps/web` build plus `api/` functions.
   Done when: a push to `main` deploys and the banner shows at the public URL.
+  Status (Nov 20): build config done (`apps/web/vercel.json`, `build:vercel`, `docs/DEPLOY.md`); open until the real Vercel project deploys.
 
-- [ ] **C4 · P0 · Demo agent stub**
+- [x] **C4 · P0 · Demo agent stub**
   Files: `api/demo-agent.ts`
   Returns a signed request link for a $0.01 item from the demo vendor, using `createRequest` (or a mock until A3 lands). Agent key from env `NOD_DEMO_AGENT_KEY`.
   Done when: `curl <app>/api/demo-agent` returns a link that opens the approval page.
+  Status (Nov 20): done: `apps/web/server/demoAgent.ts`, served as `GET /api/demo-agent` (ephemeral-key fallback with warning).
 
 ### Nov 20
 
-- [ ] **C5 · P1 · Agent keys and CLI**
+- [x] **C5 · P1 · Agent keys and CLI**
   Files: `packages/agent/src/keys.ts`, `packages/agent/src/cli.ts`
   `keys.ts`: create/load agent key (file or env). `cli.ts`: `nod request --vendor --sats --purpose`, `nod status <id>`, `nod list`.
   Done when: CLI prints a working Chipnet link and later reports paid with txid.
+  Status (Nov 20): done: `packages/agent` CLI `key` / `request` / `status` / `list`. Open part: a real paid Chipnet status.
 
-- [ ] **C6 · P1 · MCP server**
+- [x] **C6 · P1 · MCP server**
   Files: `packages/agent/src/mcp.ts`
-  `@modelcontextprotocol/sdk` stdio server with tools `create_request` (returns link), `check_status` (uses `findPayment` + `verifyReceipt`), `list_requests` (local log of created requests).
-  Done when: added to Claude, "buy one weather call" returns a link, and after approval `check_status` reports paid.
+  `@modelcontextprotocol/sdk` stdio server with tools `nod_request_payment` (returns link), `nod_payment_status` (uses `findPayment` + `verifyReceipt`), `nod_list_requests` (local log of created requests).
+  Done when: added to Claude, "buy one weather call" returns a link, and after approval `nod_payment_status` reports paid.
+  Status (Nov 20): done in code: hand-written MCP stdio server with tools `nod_request_payment`, `nod_payment_status`, `nod_list_requests`. Open part: adding it to Claude (launch checklist).
 
-- [ ] **C7 · P1 · Demo vendor**
+- [x] **C7 · P1 · Demo vendor**
   Files: `api/vendor/buy.ts`
   Takes `{ txid, req }` (or the link payload), runs `verifyReceipt`, returns the item (e.g. a weather report or joke) only if `ok`.
   Done when: valid txid returns the item; wrong txid or unpaid request returns an error.
+  Status (Nov 20): done: `apps/web/server/vendor.ts`, `POST /api/vendor/buy`; delivers only for >= `NOD_DEMO_SATS` and the configured agent key.
 
 - [ ] **C8 · P0 · First mainnet payment end-to-end (by tonight)**
   With A and B: fund a test wallet with a little BCH, run the demo flow on mainnet.
@@ -233,19 +238,22 @@ Folders: `packages/agent/src/`, `api/`, submission material. Import from `@nod/p
   Problem, agent angle, 30-second demo, how it uses BCH (OP_RETURN receipts, WizardConnect, CashTokens), business model, team; credit Requisition as inspiration.
   Done when: deck is shared "anyone with link can view" and the banner links to it.
 
-- [ ] **C10 · P1 · README**
+- [x] **C10 · P1 · README**
   Files: `README.md`
   Pitch, live link, demo steps, architecture sketch, `npm install` / `npm test`, MCP setup, credit to Requisition.
   Done when: a new reader can run the demo and add the MCP server from the README alone.
+  Status (Nov 20): done: `README.md`.
 
 - [ ] **C11 · P1 · Video draft (60–90 s)**
   Files: `docs/DEMO.md` (script)
   Screen + phone capture of: agent asks → approval page → Nod in wallet → receipt → item delivered. Include a Claude/MCP clip.
   Done when: draft under 90 s uploaded (unlisted) and shared with the team.
+  Status (Nov 20): script ready in `docs/DEMO.md`; recording is human-only.
 
 - [ ] **C12 · P1 · Social posts**
   X thread and Telegram post with the live link, short clip, EMBER2026 address.
   Done when: both posted; links saved for the submission.
+  Status (Nov 20): drafts ready in `docs/SUBMISSION.md`; posting is human-only.
 
 - [ ] **C13 · P4 · Request inbox (optional)**
   Files: `api/inbox.ts`
@@ -260,6 +268,7 @@ Folders: `packages/agent/src/`, `api/`, submission material. Import from `@nod/p
 - [ ] **C15 · P0 · DoraHacks submission (by 15:00 IST)**
   Live link, repo, slides, video, description leading with the agent angle, EMBER2026 address.
   Done when: submission is live on DoraHacks and every link opens in a private window.
+  Status (Nov 20): text ready in `docs/SUBMISSION.md`; submitting is human-only.
 
 ---
 
@@ -321,6 +330,8 @@ verifyReceipt(chain, txid, req, requestHash, { batchHashes? }) -> { ok, reasons[
 Audit of the code on Nov 20: `apps/web` typechecks and builds; pages, wallet, banner and batch are coded but nothing has been run against a real wallet yet. `/api/demo-agent` and `/api/vendor/buy` do not exist, `packages/agent` does not exist, and there is no deploy config. Fallback QR (B10) and the allowance page (B12) are cut.
 
 The work is split into three packages with **strictly disjoint files**. A builder may only create or edit the files listed for its package. No package adds npm dependencies (builders do not run `npm install`); anything that would need a new dependency is done without it.
+
+**Status (Nov 20, end of day): WP1, WP2 and WP3 are built and tested** (protocol 55 + 1 skipped, agent 12, web/server 15, contracts 9; all typechecks and `build:vercel` pass). Verifier fixes landed: `sourceOutputToRelay` for WizardConnect, change to receive address, vendor amount/agent checks, network prefix check, `batchRequests` receipt rule. Nothing has been signed by a real wallet or deployed yet: see the launch checklist below.
 
 ### Decisions
 
@@ -391,26 +402,27 @@ Tasks:
 2. `src/keys.ts`: key from `NOD_AGENT_KEY`, else `~/.nod/agent.key`, else create it and print the pubkey.
 3. `src/store.ts`: JSON log of created requests in `~/.nod/requests.json` (id, hash, link, createdAt, network); path overridable by `NOD_HOME` for tests.
 4. `src/cli.ts`: `nod request --vendor <addr> --sats <n> --purpose <text> [--name] [--expires 30m] [--base-url]`, `nod status <id|hash>` (`findPayment` + `verifyReceipt`, prints txid + explorer URL), `nod list`, `nod key`. Base URL from `NOD_BASE_URL` or `http://localhost:5173`; network from `NOD_NETWORK` (default chipnet).
-5. `src/mcp.ts`: stdio JSON-RPC MCP server with tools `create_request`, `check_status`, `list_requests` (hand-written JSON Schemas); logs only to stderr.
-6. Tests (`packages/agent/test/*.test.ts`, vitest): key load/create in a temp `NOD_HOME`, CLI argument parsing, MCP `initialize` → `tools/list` → `tools/call create_request` returning a link that `decodeLink` validates (in-process, no network).
+5. `src/mcp.ts`: stdio JSON-RPC MCP server with tools `nod_request_payment`, `nod_payment_status`, `nod_list_requests` (hand-written JSON Schemas); logs only to stderr.
+6. Tests (`packages/agent/test/*.test.ts`, vitest): key load/create in a temp `NOD_HOME`, CLI argument parsing, MCP `initialize` → `tools/list` → `tools/call nod_request_payment` returning a link that `decodeLink` validates (in-process, no network).
 7. `README.md`: pitch, live-link placeholder, 30-second demo, architecture sketch, `npm install` / `npm test`, MCP setup snippet for Claude Desktop / Claude Code (`node packages/agent/dist/mcp.mjs`), links to `docs/PROTOCOL.md` and `docs/DEPLOY.md`, credit to Requisition.
 8. `docs/DEMO.md`: 75-second video script with shot list and on-screen captions. `docs/SUBMISSION.md`: DoraHacks description (agent angle first), slide-by-slide text for the Widget Factory template copy, X thread (4 posts), Telegram post, final pre-submit checklist with link placeholders.
 
 Done when: `npx vitest run packages/agent` passes; `node packages/agent/build.mjs`, then `node packages/agent/dist/cli.mjs request --vendor bchtest:qr4upmst92u7sfm6vqxz29r4ug4rysdpcytc853pps --sats 1000 --purpose test` prints a link the approval page accepts; piping an `initialize` + `tools/list` request into `node packages/agent/dist/mcp.mjs` returns the three tools; every relative link in README resolves.
 
-### Human-only checklist
+### Launch checklist (human-only, in order)
 
-Builders cannot do these; each has a ready file or command once the WPs land.
-- [ ] Run `npm install` once at the repo root after WP3 (adds the `packages/agent` workspace to `package-lock.json`), then `npm test`; commit the lockfile.
-- [ ] Get the team's **EMBER2026 CashTokens address**; set `VITE_EMBER2026_ADDRESS` on Vercel.
-- [ ] Copy the Widget Factory slide template, paste the text from `docs/SUBMISSION.md`, share "anyone with link can view", set `VITE_SLIDES_URL`.
-- [ ] Make the GitHub repo public (banner and footer point to `github.com/aagneye/nod`).
-- [ ] Create the Vercel project (Root Directory `apps/web`), set env vars from `apps/web/.env.example` (generate `NOD_DEMO_AGENT_KEY`; `NOD_DEMO_VENDOR` = a mainnet address the team controls; `VITE_NETWORK=mainnet`, `NOD_NETWORK=mainnet`), deploy, run the checks in `docs/DEPLOY.md`.
-- [ ] Chipnet end-to-end first (checkpoint 2): fund a Paytaca/Cashonize chipnet wallet from tbch.googol.cash, demo button → Nod → receipt OK → item delivered. This is the first real test of WizardConnect signing and the `sourceOutputs` shape (A10, B3, B4).
-- [ ] Mainnet end-to-end (checkpoint 3): fund a wallet with a little BCH, pay one demo request, open the txid on explorer.bch.ninja, keep the txid for the submission.
-- [ ] Open one real txid on each explorer in `EXPLORER_TX_URL`; swap the chipnet explorer if it fails.
-- [ ] Add the MCP server to Claude using the README snippet; record the "buy one weather call" clip.
-- [ ] Record the 60–90 s video from `docs/DEMO.md`, upload, link it in README and slides.
-- [ ] Post in BLAZE Telegram ("project is real") and on X using `docs/SUBMISSION.md`; save the links.
-- [ ] DoraHacks registration and submission (by 15:00 IST Nov 22) from `docs/SUBMISSION.md`; open every link in a private window.
-- [ ] Optional: confirm PUSD category/decimals (A11); skipped for the demo unless confirmed.
+Builders cannot do these. Do them top to bottom; each step depends on the one before.
+
+1. [ ] **Real-wallet Chipnet test (biggest remaining risk).** `npm run dev -w @nod/web` with `VITE_NETWORK=chipnet`; fund a Paytaca or Cashonize chipnet wallet from tbch.googol.cash; connect via WizardConnect QR, demo button → Nod → approve on the phone → receipt shows "request matches payment" and the delivered item. Covers A10, B3, B4, B5 and Integration checkpoint 2. Also try the `wiz://` open-in-wallet link on a phone.
+2. [ ] Run `npm install` at the repo root (registers `packages/agent` in `package-lock.json`), then `npm test`; commit the lockfile.
+3. [ ] Make the GitHub repo public (banner and footer point to `github.com/aagneye/nod`).
+4. [ ] Get the team's **EMBER2026 CashTokens address**.
+5. [ ] Copy the Widget Factory slide template, paste the text from `docs/SUBMISSION.md`, share "anyone with link can view".
+6. [ ] Create the Vercel project (Root Directory `apps/web`) and set env vars **before the first build** (`VITE_*` are baked in at build time): `VITE_NETWORK=mainnet`, `NOD_NETWORK=mainnet`, `NOD_DEMO_AGENT_KEY` (generate per `docs/DEPLOY.md`), `NOD_DEMO_VENDOR` (mainnet address the team controls), `NOD_DEMO_SATS` (~$0.01 at today's price), `VITE_EMBER2026_ADDRESS`, `VITE_SLIDES_URL`. Deploy and run the checks in `docs/DEPLOY.md` (C3).
+7. [ ] **Mainnet end-to-end** on the live URL from a fresh phone + browser: demo button → Nod → receipt OK → item delivered; open the txid on explorer.bch.ninja; keep the txid (B8, C8, checkpoint 3).
+8. [ ] Open a chipnet txid on `chipnet.chaingraph.cash` in a browser (it returned 403 to curl); swap `EXPLORER_TX_URL.chipnet` if it fails.
+9. [ ] Add the MCP server to Claude using the README snippet; ask it to buy one weather report, approve, confirm `nod_payment_status` reports paid; record the clip.
+10. [ ] Record the 60–90 s video from `docs/DEMO.md`, upload, link it in README and slides (C11, C14).
+11. [ ] Post in BLAZE Telegram ("project is real") and on X from `docs/SUBMISSION.md`; save the links (C1, C12).
+12. [ ] DoraHacks submission by **15:00 IST Nov 22** from `docs/SUBMISSION.md`; open every link in a private window (C15, checkpoint 4).
+13. [ ] Optional: confirm PUSD category/decimals (A11). Optional (low): add an already-paid check to the batch page.
