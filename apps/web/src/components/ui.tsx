@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { FAUCET_URL, type FriendlyError } from '../lib/errors';
 
 export function Spinner({ className = '' }: { className?: string }) {
   return (
@@ -91,5 +92,44 @@ export function GhostButton({
     <button type="button" onClick={onClick} disabled={disabled} className={`link-cta ${className}`}>
       {children}
     </button>
+  );
+}
+
+/** Loud MAINNET / CHIPNET marker: real money vs test coins must never be ambiguous. */
+export function NetworkBadge({ network, className = '' }: { network: 'mainnet' | 'chipnet'; className?: string }) {
+  const main = network === 'mainnet';
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 border-2 px-2 py-0.5 text-[10px] font-extrabold tracking-[0.16em] uppercase ${
+        main ? 'border-ink bg-ink text-bg' : 'border-warn bg-warn/10 text-warn'
+      } ${className}`}
+      title={main ? 'Bitcoin Cash mainnet: real BCH' : 'Chipnet: BCH test network, coins have no value'}
+    >
+      <span className="inline-block size-1.5 rounded-full bg-current" />
+      {main ? 'Mainnet' : 'Chipnet'}
+    </span>
+  );
+}
+
+/** ErrorNote for a FriendlyError: message, optional detail line, faucet link on chipnet. */
+export function FriendlyErrorNote({ error }: { error: FriendlyError | null }) {
+  if (!error) return null;
+  return (
+    <div
+      className="border border-danger/40 bg-danger/10 px-4 py-2.5 text-xs font-medium leading-relaxed tracking-wide text-danger"
+      role="alert"
+    >
+      <p className="break-words">{error.text}</p>
+      {error.detail ? <p className="mt-1 break-words font-mono text-[11px]">{error.detail}</p> : null}
+      {error.faucet ? (
+        <p className="mt-1.5">
+          Get free chipnet coins at{' '}
+          <a href={FAUCET_URL} target="_blank" rel="noreferrer" className="font-bold underline underline-offset-4">
+            tbch.googol.cash ↗
+          </a>{' '}
+          and try again.
+        </p>
+      ) : null}
+    </div>
   );
 }
