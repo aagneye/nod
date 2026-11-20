@@ -101,7 +101,7 @@ Folder: `apps/web/src/`. Import all protocol logic from `@nod/protocol`.
 
 ### Nov 19
 
-- [ ] **B1 · P0 · Scaffold**
+- [x] **B1 · P0 · Scaffold**
   Files: `apps/web/` (Vite + React + TS + Tailwind), `apps/web/src/main.tsx`, `apps/web/src/App.tsx` (routes `/`, `/r`, `/batch`, `/tx/:txid`)
   Done when: `npm run dev -w apps/web` serves the four routes with placeholder pages; `@nod/protocol` imports compile.
 
@@ -109,17 +109,20 @@ Folder: `apps/web/src/`. Import all protocol logic from `@nod/protocol`.
   Files: `apps/web/src/components/Banner.tsx`
   Top-of-page bar on every route: link to slides (Widget Factory deck), link to public repo, the CashTokens address for **EMBER2026** votes (with copy button).
   Done when: banner shows on all routes at phone and desktop width; all three items work.
+  Status (Nov 20): code done (env-driven `VITE_SLIDES_URL`, `VITE_EMBER2026_ADDRESS`); open until the real deck URL and EMBER2026 address are set on the live site.
 
 - [ ] **B3 · P0 · WizardConnect connect (biggest risk, do early)**
   Files: `apps/web/src/wallet/wizard.ts`, `apps/web/src/components/WalletButton.tsx`, `apps/web/src/main.tsx` (provider)
   Use `@wizardconnect/react`: `useWizardConnect`, `WizardConnectQRDialog`. Read the `@wizardconnect/dapp` types first (especially `sourceOutputs`). Get buyer addresses from `manager.getPubkey(0, 0n)` and derive the cashaddr (`bchtest:` on Chipnet).
   Done when: on **Chipnet**, Paytaca or Cashonize scans the QR, connects, and the app shows the wallet's address.
+  Status (Nov 20): code done (`wallet/context.tsx`, `WalletButton.tsx`, `lib/address.ts`); not yet tested with a real wallet.
 
 - [ ] **B4 · P0 · Sign and broadcast on Chipnet**
   Files: `apps/web/src/wallet/wizard.ts`
   `signAndBroadcast({ txHex, sourceOutputs, inputPaths, userPrompt })` calling
   `manager.signTransaction({ transaction: { transaction: txHex, sourceOutputs, userPrompt, broadcast: true }, inputPaths })`. Use a hand-built or mock tx until A7 lands.
   Done when: one Chipnet tx is approved on the phone and its txid appears in the app.
+  Status (Nov 20): code done (`signAndBroadcast` with self-broadcast fallback); no real Chipnet tx yet.
 
 ### Nov 20
 
@@ -127,20 +130,24 @@ Folder: `apps/web/src/`. Import all protocol logic from `@nod/protocol`.
   Files: `apps/web/src/pages/Request.tsx`, `apps/web/src/components/RequestCard.tsx`
   Read `#payload`, `decodeLink`, show agent name, vendor, amount, purpose, expiry countdown, "signature valid" badge; block if invalid, expired, or `findPayment` finds it already paid. **Nod** button → `getUtxos` → `buildPayment` → `signAndBroadcast` → go to `/tx/:txid`.
   Done when: a CLI-made Chipnet link is approved end-to-end from this page.
+  Status (Nov 20): code done; paid check scans up to 200 vendor txs one by one (slow once the demo vendor has history), fix in WP2. Untested with a wallet.
 
 - [ ] **B6 · P0 · Receipt page**
   Files: `apps/web/src/pages/Receipt.tsx`, `apps/web/src/components/ReceiptCard.tsx`
   Shows txid, explorer link (`EXPLORER_TX_URL`), result of `verifyReceipt` ("request matches payment" or reasons), and the delivered item from `api/vendor/buy` when available.
   Done when: reloading `/tx/:txid` for a real tx shows OK; a tampered request shows the failure reasons.
+  Status (Nov 20): verify + explorer done (verifies only from sessionStorage); delivered item from `/api/vendor/buy` missing (WP2).
 
 - [ ] **B7 · P0 · Home page and demo button**
   Files: `apps/web/src/pages/Home.tsx`, `apps/web/src/lib/api.ts`
   One-line pitch, **"Ask the agent to buy something"** → calls `api/demo-agent` → navigates to the returned link.
   Done when: a judge on a fresh browser reaches the approval page in one tap.
+  Status (Nov 20): button and `lib/api.ts` done; `/api/demo-agent` does not exist yet (WP1).
 
 - [ ] **B8 · P0 · Switch to mainnet**
   Files: `apps/web/src/wallet/wizard.ts`, env config (`VITE_NETWORK`)
   Done when: same flow works with a ~$0.01 mainnet request (with C, see Integration checkpoints).
+  Status (Nov 20): `VITE_NETWORK=mainnet` switch exists in `config.ts`; not run on mainnet.
 
 ### Nov 21
 
@@ -148,20 +155,24 @@ Folder: `apps/web/src/`. Import all protocol logic from `@nod/protocol`.
   Files: `apps/web/src/pages/Batch.tsx`
   Several request links → list with total → one approval → one tx with batch memo → receipt.
   Done when: a 3-request Chipnet batch is approved in one wallet prompt and each request verifies.
+  Status (Nov 20): code done (paste links, total, one tx, batch receipt); untested with a wallet.
 
 - [ ] **B10 · P1 · Fallback QR**
   Files: `apps/web/src/components/FallbackQR.tsx`, `apps/web/src/pages/Request.tsx`
   For wallets without WizardConnect: plain `bitcoincash:<vendor>?amount=<bch>` QR; poll vendor address and match by address + amount; label it "no memo, matched by amount".
   Done when: paying the QR from a normal wallet moves the page to a receipt.
+  Status (Nov 20): not started. Cut for the demo (WizardConnect is required by the rules anyway).
 
 - [ ] **B11 · P1 · Mobile polish, loading and error states**
   Files: `apps/web/src/pages/*`, `apps/web/src/components/*`
   Spinners for connect/sign/broadcast, clear errors (wallet rejected, not enough funds, expired, already paid), 375px layout, no horizontal scroll.
   Done when: full demo works on a phone browser with no layout breaks; each error case shows a readable message.
+  Status (Nov 20): partial (spinners, rejected/expired/paid errors exist; no insufficient-funds mapping; 375px not checked). WP2.
 
 - [ ] **B12 · P3 · Allowance page (stretch)**
   Files: `apps/web/src/pages/Allowance.tsx`
   Done when: owner can fund and cancel an allowance on Chipnet (needs A13).
+  Status (Nov 20): not started; cut.
 
 ### Nov 22
 
@@ -302,3 +313,104 @@ verifyReceipt(chain, txid, req, requestHash, { batchHashes? }) -> { ok, reasons[
 - [ ] Telegram "project is real" confirmation done.
 - [ ] Video (60–90 s) public and linked.
 - [ ] DoraHacks submission live; X and Telegram posts out.
+
+---
+
+## Remaining build plan (Nov 20)
+
+Audit of the code on Nov 20: `apps/web` typechecks and builds; pages, wallet, banner and batch are coded but nothing has been run against a real wallet yet. `/api/demo-agent` and `/api/vendor/buy` do not exist, `packages/agent` does not exist, and there is no deploy config. Fallback QR (B10) and the allowance page (B12) are cut.
+
+The work is split into three packages with **strictly disjoint files**. A builder may only create or edit the files listed for its package. No package adds npm dependencies (builders do not run `npm install`); anything that would need a new dependency is done without it.
+
+### Decisions
+
+- **Deploy:** one Vercel project with **Root Directory = `apps/web`**. Handler sources live in `apps/web/server/` (not `api/`), and a build script writes the [Vercel Build Output API](https://vercel.com/docs/build-output-api/v3) folder `apps/web/.vercel/output/` (static files from `dist/` + one bundled function per endpoint). Why: `@nod/protocol` ships raw TypeScript with `.js` import specifiers, which Vercel's zero-config `api/*.ts` functions do not reliably compile when imported from a workspace package; bundling ourselves makes each function self-contained and testable locally. Keeping sources out of `api/` stops Vercel from also attempting zero-config builds. Paths stay `/api/demo-agent` and `/api/vendor/buy`, so `apps/web/src/lib/api.ts` needs no URL change.
+- **Bundler:** Vite's own build API (SSR/library mode) or `rolldown` (a hard dependency of Vite 8, already installed). Do not rely on `esbuild` (only an optional peer) or `tsx` (not installed).
+- **MCP server:** hand-written JSON-RPC 2.0 over stdio (`initialize`, `tools/list`, `tools/call`, `ping`), because `@modelcontextprotocol/sdk` is not installed.
+
+### HTTP contract (WP1 implements, WP2 consumes; do not change without telling both)
+
+`GET /api/demo-agent` → `200 { link: string, hash: string, network: 'mainnet'|'chipnet', expiresAt: number, warning?: string }`
+- Signs a fresh request with `createRequest`: `agentName` "Nod demo agent", `vendor` = `NOD_DEMO_VENDOR`, `amount: { sats: NOD_DEMO_SATS }` (default 2000), `purpose` "1 live weather report" (≤140 chars), `expiry` = now + 15 min.
+- Key from `NOD_DEMO_AGENT_KEY` (64 hex). If unset: generate an ephemeral key once per cold start, `console.warn` about it, and return `warning: "ephemeral agent key"`.
+- Vendor: if `NOD_DEMO_VENDOR` is unset on chipnet, derive a P2PKH address from the agent key; on mainnet return `500 { error: "NOD_DEMO_VENDOR is not set" }` (never send real funds to a key nobody keeps).
+- Link base URL: `NOD_PUBLIC_URL` if set, else `https://${x-forwarded-host || host}` (`http://` for localhost).
+- Network: `NOD_NETWORK`, else `VITE_NETWORK`, else `chipnet`. Must equal the web app's `VITE_NETWORK`.
+- `Cache-Control: no-store`.
+
+`POST /api/vendor/buy` with body `{ txid: string, signed: SignedNodRequest }` →
+- `200 { ok: true, item: { title: string, body: string, deliveredAt: number } }` when `verifyRequest(signed)` is true, `signed.req.vendor` equals the demo vendor, and `verifyReceipt(chain, txid, req, hashRequest(req))` is ok. Item: a real weather report from `api.open-meteo.com` (no key, 2 s timeout) with a canned fallback.
+- `402 { ok: false, reasons: string[] }` when the receipt check fails (unpaid, wrong amount, wrong memo, tx not found yet).
+- `400 { error }` on a malformed body; `500 { error }` if no Electrum server answers.
+- Stateless: repeat calls for the same paid request return the item again (documented demo simplification).
+
+### WP1 · API endpoints and Vercel deploy (P0)
+
+Owns (create/edit only these):
+- `apps/web/server/**` (new: e.g. `env.ts`, `demoAgent.ts`, `vendor.ts`, `node-adapter.ts`, plus `*.test.ts`)
+- `apps/web/scripts/build-vercel.mjs` (new)
+- `apps/web/vite.config.ts` (dev-only middleware serving `/api/*` from `apps/web/server/` via `ssrLoadModule`)
+- `apps/web/package.json` (scripts only: `build:vercel`, `test`; no new dependencies)
+- `apps/web/tsconfig.json` (only if `server/` needs typechecking), `apps/web/vercel.json` (new), `apps/web/.env.example` (new)
+- `docs/DEPLOY.md` (new: Vercel settings, env vars, verification steps)
+
+Tasks:
+1. Handlers as web-standard `(request: Request) => Promise<Response>` in `apps/web/server/`, implementing the contract above.
+2. Dev middleware so `npm run dev -w @nod/web` serves the app and `/api/*` together.
+3. `build-vercel.mjs` (runs after `vite build`): write `.vercel/output/config.json` (`version: 3`; routes `{ handle: 'filesystem' }` then SPA fallback `/(.*)` → `/index.html`), copy `dist/` to `.vercel/output/static/`, and for each endpoint write `.vercel/output/functions/api/<name>.func/` with a fully bundled `index.mjs` (all dependencies inlined, Node 22 target) and `.vc-config.json` (`runtime: nodejs22.x`, `handler: index.mjs`, `launcherType: Nodejs`), adapting the web handler to Node `(req, res)`.
+4. `vercel.json`: `buildCommand: npm run build:vercel`, `framework: null`, install from the repo root (`installCommand: cd ../.. && npm install`).
+5. `.env.example` + `docs/DEPLOY.md` listing `VITE_NETWORK`, `VITE_SLIDES_URL`, `VITE_EMBER2026_ADDRESS`, `NOD_NETWORK`, `NOD_DEMO_AGENT_KEY`, `NOD_DEMO_VENDOR`, `NOD_DEMO_SATS`, `NOD_PUBLIC_URL`, and a one-liner to generate an agent key.
+
+Done when:
+- `npx vitest run apps/web/server` passes: demo-agent returns a link whose payload `decodeLink` reports `valid: true, expired: false`; mainnet without vendor gives 500; vendor/buy with a garbage body gives 400 and with an unpaid request (mock `ChainReader`) gives 402.
+- `npm run build:vercel -w @nod/web` produces `.vercel/output/` with `static/index.html` and two `.func` folders.
+- Copying `functions/api/demo-agent.func/` to an empty temp folder outside the repo and calling its handler with Node returns a valid link (proves nothing was left external).
+- `npm run dev -w @nod/web`, then `curl localhost:5173/api/demo-agent` returns `{ link }`, and the Home button opens the approval page.
+- `npx tsc --noEmit -p apps/web` still passes.
+
+### WP2 · Web app finish (P0/P1)
+
+Owns: `apps/web/src/**` and `apps/web/index.html` only. No `package.json`, config files or new dependencies.
+
+Tasks:
+1. **Delivered item (B6):** add `buyFromVendor(txid, signed)` to `lib/api.ts` per the contract. Receipt page: after a single verified request, call it (retry up to 3× with 2 s gaps on 402 while the tx propagates) and show the item in `ReceiptCard` ("Delivered by the vendor"). Hide the section quietly on 404 (endpoint absent) or when the vendor is not the demo vendor.
+2. **Shareable receipt:** after a single payment navigate to `/tx/<txid>#<payload>` so a fresh browser can still verify; Receipt uses the hash payload when sessionStorage has nothing.
+3. **Fast paid check (B5):** pass `{ maxTxs: 25 }` to `findPayment` on the approval page (the scan is sequential and keeps the Nod button disabled; the demo vendor will collect many txs).
+4. **Errors (B11):** map insufficient-funds errors from `buildPayment` to "This wallet does not have enough BCH for this payment plus fee."; show demo-agent `warning` as a small note on Home when present.
+5. **Phones (B11):** check Home, Request, Receipt at 375px (Browser pane mobile preset) for horizontal scroll; make sure the WizardConnect URI can be copied on the same phone (the dialog has a copy button; verify it is visible on narrow screens).
+6. Network clarity: the approval page shows a prominent MAINNET / CHIPNET badge next to the amount.
+
+Done when: `npx tsc --noEmit` and `npx vite build` in `apps/web` pass; with WP1's dev server running, Home → demo button → approval page shows the request with "signature valid"; opening `/tx/<real chipnet txid>#<payload>` in a fresh tab shows a verification result (not "open from the approval page"); no horizontal scroll at 375px on the three pages.
+
+### WP3 · Agent tool (CLI + MCP) and submission docs (P1)
+
+Owns: `packages/agent/**` (new), `README.md`, `docs/DEMO.md` (new), `docs/SUBMISSION.md` (new).
+
+Tasks:
+1. `packages/agent/package.json` (`@nod/agent`, `bin: { nod: dist/cli.mjs, nod-mcp: dist/mcp.mjs }`, depends only on `@nod/protocol` and already-installed packages) and `build.mjs` bundling `src/cli.ts` and `src/mcp.ts` into `dist/` (Vite build API or rolldown; deps may stay external because it runs inside the repo).
+2. `src/keys.ts`: key from `NOD_AGENT_KEY`, else `~/.nod/agent.key`, else create it and print the pubkey.
+3. `src/store.ts`: JSON log of created requests in `~/.nod/requests.json` (id, hash, link, createdAt, network); path overridable by `NOD_HOME` for tests.
+4. `src/cli.ts`: `nod request --vendor <addr> --sats <n> --purpose <text> [--name] [--expires 30m] [--base-url]`, `nod status <id|hash>` (`findPayment` + `verifyReceipt`, prints txid + explorer URL), `nod list`, `nod key`. Base URL from `NOD_BASE_URL` or `http://localhost:5173`; network from `NOD_NETWORK` (default chipnet).
+5. `src/mcp.ts`: stdio JSON-RPC MCP server with tools `create_request`, `check_status`, `list_requests` (hand-written JSON Schemas); logs only to stderr.
+6. Tests (`packages/agent/test/*.test.ts`, vitest): key load/create in a temp `NOD_HOME`, CLI argument parsing, MCP `initialize` → `tools/list` → `tools/call create_request` returning a link that `decodeLink` validates (in-process, no network).
+7. `README.md`: pitch, live-link placeholder, 30-second demo, architecture sketch, `npm install` / `npm test`, MCP setup snippet for Claude Desktop / Claude Code (`node packages/agent/dist/mcp.mjs`), links to `docs/PROTOCOL.md` and `docs/DEPLOY.md`, credit to Requisition.
+8. `docs/DEMO.md`: 75-second video script with shot list and on-screen captions. `docs/SUBMISSION.md`: DoraHacks description (agent angle first), slide-by-slide text for the Widget Factory template copy, X thread (4 posts), Telegram post, final pre-submit checklist with link placeholders.
+
+Done when: `npx vitest run packages/agent` passes; `node packages/agent/build.mjs`, then `node packages/agent/dist/cli.mjs request --vendor bchtest:qr4upmst92u7sfm6vqxz29r4ug4rysdpcytc853pps --sats 1000 --purpose test` prints a link the approval page accepts; piping an `initialize` + `tools/list` request into `node packages/agent/dist/mcp.mjs` returns the three tools; every relative link in README resolves.
+
+### Human-only checklist
+
+Builders cannot do these; each has a ready file or command once the WPs land.
+- [ ] Run `npm install` once at the repo root after WP3 (adds the `packages/agent` workspace to `package-lock.json`), then `npm test`; commit the lockfile.
+- [ ] Get the team's **EMBER2026 CashTokens address**; set `VITE_EMBER2026_ADDRESS` on Vercel.
+- [ ] Copy the Widget Factory slide template, paste the text from `docs/SUBMISSION.md`, share "anyone with link can view", set `VITE_SLIDES_URL`.
+- [ ] Make the GitHub repo public (banner and footer point to `github.com/aagneye/nod`).
+- [ ] Create the Vercel project (Root Directory `apps/web`), set env vars from `apps/web/.env.example` (generate `NOD_DEMO_AGENT_KEY`; `NOD_DEMO_VENDOR` = a mainnet address the team controls; `VITE_NETWORK=mainnet`, `NOD_NETWORK=mainnet`), deploy, run the checks in `docs/DEPLOY.md`.
+- [ ] Chipnet end-to-end first (checkpoint 2): fund a Paytaca/Cashonize chipnet wallet from tbch.googol.cash, demo button → Nod → receipt OK → item delivered. This is the first real test of WizardConnect signing and the `sourceOutputs` shape (A10, B3, B4).
+- [ ] Mainnet end-to-end (checkpoint 3): fund a wallet with a little BCH, pay one demo request, open the txid on explorer.bch.ninja, keep the txid for the submission.
+- [ ] Open one real txid on each explorer in `EXPLORER_TX_URL`; swap the chipnet explorer if it fails.
+- [ ] Add the MCP server to Claude using the README snippet; record the "buy one weather call" clip.
+- [ ] Record the 60–90 s video from `docs/DEMO.md`, upload, link it in README and slides.
+- [ ] Post in BLAZE Telegram ("project is real") and on X using `docs/SUBMISSION.md`; save the links.
+- [ ] DoraHacks registration and submission (by 15:00 IST Nov 22) from `docs/SUBMISSION.md`; open every link in a private window.
+- [ ] Optional: confirm PUSD category/decimals (A11); skipped for the demo unless confirmed.

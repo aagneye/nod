@@ -10,7 +10,7 @@ The name "Selene" was dropped because Selene Wallet is a sponsor and its lead de
 
 Step-by-step tasks for each person are in [`docs/STEPS.md`](STEPS.md).
 
-## Progress (last updated Nov 19, 2026)
+## Progress (last updated Nov 20, 2026)
 
 Update this section and the boxes in `docs/STEPS.md` whenever a task is finished.
 
@@ -19,8 +19,8 @@ Update this section and the boxes in `docs/STEPS.md` whenever a task is finished
 | Repo setup, plan, steps, protocol spec | Aagneye | ✅ Done |
 | Protocol and chain (`packages/protocol`) | Aagneye | ✅ Done: 54 tests green |
 | Allowance contract (`contracts/`) | Aagneye | ✅ Done: 9 tests green |
-| Web app (`apps/web`) | Person B | ⬜ Not started |
-| Agent tool, demo API, launch | Person C | ⬜ Not started |
+| Web app (`apps/web`) | Person B | 🟨 Pages, wallet, banner coded; builds and typechecks. Not tested with a real wallet; vendor item on receipt missing (see STEPS "Remaining build plan") |
+| Agent tool, demo API, launch | Person C | ⬜ Not started; split into WP1 (API + deploy) and WP3 (agent + docs) in STEPS |
 | First Chipnet payment end-to-end | A + B | ⬜ Not started (needs web app + wallet) |
 | First mainnet payment end-to-end | A + B + C | ⬜ Not started |
 | DoraHacks submission | Person C | ⬜ Not started |
