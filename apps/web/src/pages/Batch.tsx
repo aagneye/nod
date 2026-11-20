@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { buildPayment, decodeLink, hashRequest, MAX_BATCH, type SignedNodRequest } from '@nod/protocol';
-import { Badge, Card, ErrorNote, PrimaryButton, Spinner } from '../components/ui';
+import { Badge, Card, ErrorNote, FriendlyErrorNote, PrimaryButton, Spinner } from '../components/ui';
+import { friendlyError, type FriendlyError } from '../lib/errors';
+import { receiptPath } from '../lib/receiptLink';
 import { NETWORK } from '../config';
 import { saveApproved } from '../lib/approvals';
 import { formatAmount } from '../lib/format';
@@ -41,7 +43,7 @@ export default function BatchPage() {
   const wallet = useWallet();
   const [text, setText] = useState('');
   const [paying, setPaying] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<FriendlyError | null>(null);
 
   const parsed = useMemo(() => (text.trim() ? parseLines(text) : []), [text]);
   const valid = parsed.filter((p): p is { signed: SignedNodRequest; error?: undefined } => !!p.signed);
@@ -84,9 +86,9 @@ export default function BatchPage() {
         txid,
         valid.map((p) => p.signed),
       );
-      navigate(`/tx/${txid}`);
+      navigate(receiptPath(txid, valid.map((p) => p.signed)));
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(friendlyError(e));
     } finally {
       setPaying(false);
     }
@@ -134,7 +136,7 @@ export default function BatchPage() {
         {invalid.length > 0 ? (
           <div className="mt-3 space-y-1">
             {invalid.map((p, i) => (
-              <p key={`${p.error}-${i}`} className="text-xs text-warn">
+              <p key={`${p.error}-${i}`} className="text-xs break-words text-warn">
                 ⚠ Skipped: {p.error}
               </p>
             ))}
@@ -177,7 +179,7 @@ export default function BatchPage() {
           </div>
         ) : null}
         <div className="mt-4">
-          <ErrorNote>{error}</ErrorNote>
+          <FriendlyErrorNote error={error} />
         </div>
         {wallet.state !== 'connected' && valid.length > 0 ? (
           <p className="mt-3 text-sm text-muted">Connect your wallet to approve.</p>
