@@ -38,8 +38,25 @@ function nodApi(): Plugin {
   };
 }
 
+/**
+ * X and Telegram only show the preview card for an absolute og:image URL.
+ * At build time, prefix it with NOD_PUBLIC_URL, or Vercel's production domain.
+ */
+function absoluteSocialImage(): Plugin {
+  return {
+    name: 'nod-social-image',
+    apply: 'build',
+    transformIndexHtml(html) {
+      const vercel = process.env.VERCEL_PROJECT_PRODUCTION_URL;
+      const origin = (process.env.NOD_PUBLIC_URL || (vercel ? `https://${vercel}` : '')).replace(/\/+$/, '');
+      if (!origin) return html;
+      return html.replace(/content="\/og\.png"/g, `content="${origin}/og.png"`);
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), tailwindcss(), nodApi()],
+  plugins: [react(), tailwindcss(), nodApi(), absoluteSocialImage()],
   server: {
     port: 5173,
   },

@@ -41,7 +41,7 @@ Full list with comments: `apps/web/.env.example`. `VITE_*` values are baked into
 | `NOD_DEMO_AGENT_KEY` | 64 hex chars | Secret. Unset = ephemeral key per cold start; the response then carries `warning: "ephemeral agent key"`. |
 | `NOD_DEMO_VENDOR` | a `bitcoincash:` address the team controls | **Required on mainnet** (otherwise `/api/demo-agent` returns 500). On chipnet, unset = the agent key's own P2PKH address. |
 | `NOD_DEMO_SATS` | `2000` | Price per demo purchase, minimum 546. |
-| `NOD_PUBLIC_URL` | `https://<project>.vercel.app` | Base of request links. Unset = the request's host. |
+| `NOD_PUBLIC_URL` | `https://<project>.vercel.app` | Base of request links, and the origin of the social preview image (`og:image`). Unset = the request's host; the preview falls back to Vercel's production domain. |
 | `VITE_SLIDES_URL` | team slide deck link | |
 | `VITE_EMBER2026_ADDRESS` | team CashTokens address | |
 | `VITE_API_BASE` | (empty) | Only if the API runs on another origin. |
