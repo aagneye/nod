@@ -31,23 +31,44 @@ function setup() {
   return { provider, contract, contractUtxo, ownerUtxo };
 }
 
-function agentSpend(opts: { pay?: bigint; to?: string; sequence?: number; fee?: bigint; signer?: SignatureTemplate } = {}) {
+function agentSpend(
+  opts: {
+    pay?: bigint;
+    to?: string;
+    sequence?: number;
+    fee?: bigint;
+    signer?: SignatureTemplate;
+    extra?: { to: string; amount: bigint } | { memo: string };
+  } = {},
+) {
   const { provider, contract, contractUtxo } = setup();
   const pay = opts.pay ?? 2_500n;
   const fee = opts.fee ?? 1_000n;
-  return new TransactionBuilder({ provider })
+  const extraSats = opts.extra && 'amount' in opts.extra ? opts.extra.amount : 0n;
+  const builder = new TransactionBuilder({ provider })
     .addInput(contractUtxo, contract.unlock.agentSpend!(opts.signer ?? agent.sig), {
       sequence: opts.sequence ?? Number(PERIOD),
     })
     .addOutput({ to: opts.to ?? vendor.address, amount: pay })
-    .addOutput({ to: contract.address, amount: FUNDS - pay - fee })
-    .send();
+    .addOutput({ to: contract.address, amount: FUNDS - pay - fee - extraSats });
+  if (opts.extra && 'memo' in opts.extra) builder.addOpReturnOutput(['NOD', opts.extra.memo]);
+  else if (opts.extra) builder.addOutput({ to: opts.extra.to, amount: opts.extra.amount });
+  return builder.send();
 }
 
 describe('Allowance contract', () => {
   it('lets the agent pay the vendor within the cap after the period', async () => {
     await expect(agentSpend()).resolves.toBeDefined();
     await expect(agentSpend({ pay: CAP })).resolves.toBeDefined();
+  });
+
+  it('allows a NOD memo as a third output', async () => {
+    await expect(agentSpend({ extra: { memo: '0xab' } })).resolves.toBeDefined();
+  });
+
+  it('rejects a third output that sends sats to another address', async () => {
+    // Fee slack would otherwise let the agent skim up to 2,000 sats per period.
+    await expect(agentSpend({ fee: 500n, extra: { to: stranger.address, amount: 1_500n } })).rejects.toThrow(/require\(tx\.outputs\[2\]\.value == 0\)|Allowance\.cash:41/);
   });
 
   it('rejects a payment over the cap', async () => {
