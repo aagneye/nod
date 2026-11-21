@@ -275,7 +275,7 @@ export default function Home() {
                 tryDemoLabel
               )}
             </PrimaryButton>
-            <GhostButton onClick={() => navigate('/batch')}>
+            <GhostButton onClick={() => navigate('/batch?demo=1')}>
               Pay a batch <span aria-hidden="true">↗</span>
             </GhostButton>
           </div>
@@ -363,7 +363,7 @@ export default function Home() {
             </p>
             <div className="mt-8 flex flex-wrap gap-4">
               <Link
-                to="/batch"
+                to="/batch?demo=1"
                 className="text-[11px] font-bold tracking-[0.16em] text-acid uppercase underline-offset-4 hover:underline"
               >
                 Approve a batch →
@@ -426,7 +426,7 @@ export default function Home() {
               )}
             </PrimaryButton>
             <Link
-              to="/batch"
+              to="/batch?demo=1"
               className="text-[11px] font-bold tracking-[0.16em] text-[#fff8ef] uppercase underline-offset-4 hover:underline"
             >
               Pay a batch instead →

@@ -50,6 +50,45 @@ export async function fetchDemoAgent(): Promise<DemoLink> {
   return { link: text };
 }
 
+export interface DemoBatch {
+  links: string[];
+  network?: string;
+  expiresAt?: number;
+  warning?: string;
+}
+
+/** Ask the demo agent (`GET /api/demo-agent?count=N`) for N signed request links with varied purposes. */
+export async function fetchDemoBatch(count = 3): Promise<DemoBatch> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/api/demo-agent?count=${encodeURIComponent(String(count))}`, {
+      headers: { accept: 'application/json' },
+      cache: 'no-store',
+    });
+  } catch {
+    throw new Error('Could not reach the demo agent endpoint.');
+  }
+  let data: Record<string, unknown> | null = null;
+  try {
+    data = (await res.json()) as Record<string, unknown>;
+  } catch {
+    /* not JSON (e.g. SPA fallback HTML when the API is absent) */
+  }
+  if (!res.ok) {
+    const detail = typeof data?.error === 'string' ? `: ${data.error}` : '';
+    throw new Error(`Demo agent responded ${res.status}${detail}.`);
+  }
+  const raw = Array.isArray(data?.links) ? data.links : typeof data?.link === 'string' ? [data.link] : null;
+  const links = raw?.filter((l): l is string => typeof l === 'string' && /^https?:\/\//.test(l)) ?? [];
+  if (links.length === 0) throw new Error('Demo agent did not return any links.');
+  return {
+    links,
+    network: typeof data?.network === 'string' ? data.network : undefined,
+    expiresAt: typeof data?.expiresAt === 'number' ? data.expiresAt : undefined,
+    warning: typeof data?.warning === 'string' && data.warning ? data.warning : undefined,
+  };
+}
+
 /** Back-compat helper: just the link. */
 export async function fetchDemoLink(): Promise<string> {
   return (await fetchDemoAgent()).link;
