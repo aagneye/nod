@@ -298,7 +298,7 @@ buildPayment({ network, payments: [{ vendor, amount, requestHash }], utxos: Spen
 findPayment(chain, req, requestHash, { batchHashes?, maxTxs? }) -> { txid } | null
 verifyReceipt(chain, txid, req, requestHash, { batchHashes? }) -> { ok, reasons[] }
 ```
-- [x] Exported from `@nod/protocol` (A5); 54 protocol tests + 9 contract tests green.
+- [x] Exported from `@nod/protocol` (A5); 55 protocol tests + 11 contract tests green.
 - [ ] B checks `sourceOutputs` against the real `@wizardconnect/dapp` types (current shape follows the WalletConnect-BCH convention: libauth `Input & Output` per input).
 
 ### 2. First Chipnet end-to-end (target Nov 20 midday)
@@ -425,4 +425,17 @@ Builders cannot do these. Do them top to bottom; each step depends on the one be
 10. [ ] Record the 60–90 s video from `docs/DEMO.md`, upload, link it in README and slides (C11, C14).
 11. [ ] Post in BLAZE Telegram ("project is real") and on X from `docs/SUBMISSION.md`; save the links (C1, C12).
 12. [ ] DoraHacks submission by **15:00 IST Nov 22** from `docs/SUBMISSION.md`; open every link in a private window (C15, checkpoint 4).
-13. [ ] Optional: confirm PUSD category/decimals (A11). Optional (low): add an already-paid check to the batch page.
+13. [ ] Optional: confirm PUSD category/decimals (A11). (The batch already-paid check is done.)
+14. [ ] Set `NOD_PUBLIC_URL` on Vercel so the social preview card (`og:image`) is an absolute URL, then paste the live link into an X draft to check the card shows.
+
+## Gap pass (Nov 21)
+
+A second audit against the hackathon rules found and closed these gaps:
+
+- [x] Batch demo judges can use without links: `GET /api/demo-agent?count=3`, "Load 3 demo requests" button, `/batch?demo=1` from Home.
+- [x] Batch already-paid check (single and same-set batch payments are skipped).
+- [x] `/how` page: 3-step flow, memo bytes, batch hash, allowance covenant source and walkthrough (B12 covered as an explainer; the wallet UI stays cut).
+- [x] Favicon, Open Graph / X card (`public/og.png`), absolute `og:image` at build time.
+- [x] Lazy-loaded pages with an error boundary.
+- [x] Covenant fix: the optional third agent output must be a zero-value, token-free OP_RETURN (closed a 2,000-sat-per-period skim); 2 new contract tests.
+- [ ] Still human-only: everything in the launch checklist above, starting with the real-wallet Chipnet test.
