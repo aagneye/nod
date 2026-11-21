@@ -42,7 +42,7 @@ const WALKTHROUGH = [
       'this.age >= periodBlocks: the coin must have sat untouched for a full period (a relative timelock, OP_CHECKSEQUENCEVERIFY).',
       'Output 0 must pay the one approved vendor, and at most capSats.',
       'Output 1 must send the rest back to this same contract, minus at most 2,000 sats of fee. That fresh coin has age 0, so the clock restarts.',
-      'No tokens can leak out, no other inputs can be mixed in, at most one extra output (the NOD memo).',
+      'No other inputs can be mixed in. The only extra output allowed is a zero-value OP_RETURN memo with no tokens, so nothing leaves to an address you did not approve.',
     ],
   },
   {
@@ -173,7 +173,7 @@ export default function HowPage() {
           time. The rules live in the coin itself, enforced by every BCH node.
         </p>
         <p>
-          <span className="chip">Covenant built and tested · 9 tests</span>{' '}
+          <span className="chip">Covenant built and tested · 11 tests</span>{' '}
           <span className="chip-plain chip">Wallet UI on the roadmap</span>
         </p>
 
