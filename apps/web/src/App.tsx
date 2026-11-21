@@ -1,12 +1,24 @@
+import { lazy, Suspense } from 'react';
 import { BrowserRouter, Link, Route, Routes } from 'react-router-dom';
 import { Banner } from './components/Banner';
-import { Card } from './components/ui';
+import { Card, Spinner } from './components/ui';
 import { REPO_URL } from './config';
 import { WalletProvider } from './wallet/context';
 import Home from './pages/Home';
-import RequestPage from './pages/Request';
-import ReceiptPage from './pages/Receipt';
-import BatchPage from './pages/Batch';
+
+// Home stays in the entry chunk; every other route loads on demand.
+const RequestPage = lazy(() => import('./pages/Request'));
+const ReceiptPage = lazy(() => import('./pages/Receipt'));
+const BatchPage = lazy(() => import('./pages/Batch'));
+const HowPage = lazy(() => import('./pages/How'));
+
+function PageFallback() {
+  return (
+    <div className="grid min-h-[40vh] place-items-center">
+      <Spinner className="size-6" />
+    </div>
+  );
+}
 
 function NotFound() {
   return (
@@ -28,13 +40,16 @@ export default function App() {
         <div className="flex min-h-dvh flex-col">
           <Banner />
           <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6">
-            <Routes>
-              <Route path="/" element={<Home />} />
-              <Route path="/r" element={<RequestPage />} />
-              <Route path="/batch" element={<BatchPage />} />
-              <Route path="/tx/:txid" element={<ReceiptPage />} />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
+            <Suspense fallback={<PageFallback />}>
+              <Routes>
+                <Route path="/" element={<Home />} />
+                <Route path="/r" element={<RequestPage />} />
+                <Route path="/batch" element={<BatchPage />} />
+                <Route path="/how" element={<HowPage />} />
+                <Route path="/tx/:txid" element={<ReceiptPage />} />
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </Suspense>
           </main>
           <footer className="border-t border-line">
             <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 py-6 text-[11px]">

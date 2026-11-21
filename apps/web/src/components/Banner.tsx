@@ -18,6 +18,7 @@ const STATUS: Record<ChainStatus, { cls: string; text: string }> = {
 const NAV = [
   { to: '/', label: 'Home' },
   { to: '/batch', label: 'Batch' },
+  { to: '/how', label: 'How it works' },
 ] as const;
 
 /** Round serif mark — a nod, a block, a signature target. */
@@ -127,6 +128,17 @@ export function Banner() {
             Submission
           </span>
           {/* The header nav hides below md; the hackathon banner must still link both. */}
+          {NAV.filter((item) => item.to !== '/').map((item) => (
+            <Link
+              key={item.to}
+              to={item.to}
+              className={`font-bold tracking-[0.16em] uppercase underline-offset-2 hover:text-ink hover:underline md:hidden ${
+                location.pathname === item.to ? 'text-accent' : 'text-muted'
+              }`}
+            >
+              {item.label}
+            </Link>
+          ))}
           <a
             href={SLIDES_URL}
             target="_blank"
