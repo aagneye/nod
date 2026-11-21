@@ -118,6 +118,8 @@ export default function BatchPage() {
       setCheckingPaid(false);
       return;
     }
+    const batchHashes = valid.map((p) => hashRequest(p.signed.req));
+    const batchRequests = valid.map((p) => p.signed.req);
     const run = ++runId.current;
     let released = false;
     setCheckingPaid(true);
@@ -139,8 +141,10 @@ export default function BatchPage() {
       }
       await Promise.allSettled(
         pending.map(async (p) => {
+          // Pass the whole list so a batch payment of this exact set is recognised too.
           const found = await findPayment(chain, p.signed.req, hashRequest(p.signed.req), {
             maxTxs: PAID_CHECK_MAX_TXS,
+            ...(batchHashes.length > 1 ? { batchHashes, batchRequests } : {}),
           });
           // Results are facts about the request hash, so keep them even if the list changed.
           setPaidBy((prev) => ({ ...prev, [p.hash]: found ? found.txid : null }));
@@ -348,8 +352,8 @@ export default function BatchPage() {
       <div className="mt-5 flex flex-wrap items-center gap-4 text-xs text-faint">
         <Badge tone="neutral">Route /batch</Badge>
         <span>
-          Every request is checked for a valid signature, and re-read on chain so nothing is paid twice, before it can
-          be paid.
+          Every request is checked for a valid signature and looked up on chain, so a request already paid on its own
+          or in this same batch is skipped.
         </span>
       </div>
     </div>
