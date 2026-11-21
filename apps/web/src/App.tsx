@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react';
+import { Component, lazy, Suspense, type ReactNode } from 'react';
 import { BrowserRouter, Link, Route, Routes } from 'react-router-dom';
 import { Banner } from './components/Banner';
 import { Card, Spinner } from './components/ui';
@@ -18,6 +18,30 @@ function PageFallback() {
       <Spinner className="size-6" />
     </div>
   );
+}
+
+/** A failed lazy chunk (e.g. a stale tab after a redeploy) must not blank the app. */
+class PageErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state: { error: Error | null } = { error: null };
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <Card>
+        <h1 className="display text-2xl">This page could not load</h1>
+        <p className="mt-3 text-sm text-muted">{this.state.error.message}</p>
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="mt-4 border border-line px-3 py-2 text-[10px] font-bold tracking-[0.14em] uppercase transition hover:border-strong"
+        >
+          Reload
+        </button>
+      </Card>
+    );
+  }
 }
 
 function NotFound() {
@@ -40,16 +64,18 @@ export default function App() {
         <div className="flex min-h-dvh flex-col">
           <Banner />
           <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6">
-            <Suspense fallback={<PageFallback />}>
-              <Routes>
-                <Route path="/" element={<Home />} />
-                <Route path="/r" element={<RequestPage />} />
-                <Route path="/batch" element={<BatchPage />} />
-                <Route path="/how" element={<HowPage />} />
-                <Route path="/tx/:txid" element={<ReceiptPage />} />
-                <Route path="*" element={<NotFound />} />
-              </Routes>
-            </Suspense>
+            <PageErrorBoundary>
+              <Suspense fallback={<PageFallback />}>
+                <Routes>
+                  <Route path="/" element={<Home />} />
+                  <Route path="/r" element={<RequestPage />} />
+                  <Route path="/batch" element={<BatchPage />} />
+                  <Route path="/how" element={<HowPage />} />
+                  <Route path="/tx/:txid" element={<ReceiptPage />} />
+                  <Route path="*" element={<NotFound />} />
+                </Routes>
+              </Suspense>
+            </PageErrorBoundary>
           </main>
           <footer className="border-t border-line">
             <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 py-6 text-[11px]">
