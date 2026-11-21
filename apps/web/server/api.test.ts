@@ -124,6 +124,69 @@ describe('GET /api/demo-agent', () => {
     const res = await handleDemoAgent(get(), { NOD_DEMO_AGENT_KEY: 'zz' });
     expect(res.status).toBe(500);
   });
+
+  it('?count=3 returns three distinct, valid, vendor-acceptable requests', async () => {
+    const env = { NOD_DEMO_AGENT_KEY: KEY, NOD_DEMO_VENDOR: VENDOR, NOD_NETWORK: 'chipnet', NOD_DEMO_SATS: '1500' };
+    const res = await handleDemoAgent(get('http://localhost:5173/api/demo-agent?count=3'), env);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      links: string[];
+      requests: SignedNodRequest[];
+      network: string;
+      expiresAt: number;
+      warning?: string;
+      link?: unknown;
+    };
+    expect(body.link).toBeUndefined();
+    expect(body.warning).toBeUndefined();
+    expect(body.network).toBe('chipnet');
+    expect(body.links).toHaveLength(3);
+    expect(body.requests).toHaveLength(3);
+    const decoded = body.links.map((l) => {
+      expect(l.startsWith('http://localhost:5173/r#')).toBe(true);
+      return decodeLink(l.split('#')[1]!);
+    });
+    for (const [i, d] of decoded.entries()) {
+      expect(d.valid).toBe(true);
+      expect(d.expired).toBe(false);
+      expect(d.signed.req.vendor).toBe(VENDOR);
+      expect(d.signed.req.amount).toEqual({ sats: 1500 });
+      expect(d.signed.req.expiry).toBe(body.expiresAt);
+      expect(d.signed).toEqual(body.requests[i]);
+    }
+    expect(new Set(decoded.map((d) => d.signed.req.purpose)).size).toBe(3);
+    expect(new Set(decoded.map((d) => d.signed.req.id)).size).toBe(3);
+    expect(decoded[0]!.signed.req.purpose).toBe('1 live weather report');
+
+    // Each passes the vendor's checks: it reaches the chain lookup and is 402 (unpaid), not 400.
+    for (const signed of body.requests) {
+      const r = await handleVendorBuy(post({ txid: TXID, signed }), { env, connectChain: async () => fakeChain() });
+      expect(r.status).toBe(402);
+    }
+  });
+
+  it('?count=1 and no count keep the single-link shape; bad counts are 400', async () => {
+    const env = { NOD_DEMO_AGENT_KEY: KEY, NOD_DEMO_VENDOR: VENDOR };
+    for (const url of ['http://localhost:5173/api/demo-agent?count=1', 'http://localhost:5173/api/demo-agent']) {
+      const body = (await (await handleDemoAgent(get(url), env)).json()) as Record<string, unknown>;
+      expect(typeof body.link).toBe('string');
+      expect(typeof body.hash).toBe('string');
+      expect(body.links).toBeUndefined();
+    }
+    for (const bad of ['0', '6', '2.5', 'abc', '-1']) {
+      const res = await handleDemoAgent(get(`http://localhost:5173/api/demo-agent?count=${bad}`), env);
+      expect(res.status, bad).toBe(400);
+    }
+  });
+
+  it('?count=5 with an ephemeral key derives the chipnet vendor and warns', async () => {
+    const res = await handleDemoAgent(get('http://localhost:5173/api/demo-agent?count=5'), {});
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { links: string[]; requests: SignedNodRequest[]; warning?: string };
+    expect(body.warning).toBe('ephemeral agent key');
+    expect(body.links).toHaveLength(5);
+    for (const r of body.requests) expect(r.req.vendor).toBe(p2pkhAddress(r.req.agent, 'chipnet'));
+  });
 });
 
 describe('POST /api/vendor/buy', () => {
