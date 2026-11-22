@@ -1,176 +1,115 @@
-# Nod Request v1
+# Nod protocol v2: agent payments on HSK Chain with HSP
 
-A Nod Request is a small signed message in which an AI agent asks a person to pay a vendor in Bitcoin Cash (BCH or a fungible CashToken). The person approves it in their wallet. The payment transaction commits the request's hash in an `OP_RETURN` memo, so anyone can check on-chain that the request was paid, without a server or contract state.
+Nod splits an agent payment into three steps: the **agent asks** (signed payment terms), a **person nods** (a wallet signature over an HSP payment authorization), and **HSK Chain settles** (HSP's Gateway executes the transfer, and Nod anchors the receipt on HSK Chain).
 
-Reference implementation: `packages/protocol/src/request.ts` (request format, hashing, signing, links), `memo.ts` (memo encoding), `receipt.ts` (payment matching).
+## 1. Terms: what a receiving agent asks for
 
-## 1. Fields
-
-A request is a JSON object. Unknown fields are rejected.
-
-| Field | Type | Required | Rules |
-|---|---|---|---|
-| `v` | number | yes | Must be `1`. |
-| `id` | string | yes | 16 random bytes as 32 lowercase hex chars. Makes each request unique. |
-| `agent` | string | yes | Agent's compressed secp256k1 public key: 66 lowercase hex chars starting `02` or `03`. |
-| `agentName` | string | yes | Human-readable label, 1 to 64 chars. Not authenticated beyond the signature: wallets must show `agent` (or a fingerprint) too. |
-| `vendor` | string | yes | Lowercase cashaddr with prefix `bitcoincash:` (mainnet) or `bchtest:` (chipnet), valid checksum. Token payments should use a token-aware address (`z...`/`r...`). |
-| `amount` | object | yes | Exactly one of the two forms below. |
-| `amount.sats` | number | | BCH amount in satoshis: integer, at least 546 (dust limit), at most 2^53 - 1. |
-| `amount.token` + `amount.units` | string + string | | `token`: category id, 64 lowercase hex chars, in the byte order explorers display. `units`: smallest token units as a decimal string, no sign, no leading zeros, 1 to 2^63 - 1. |
-| `purpose` | string | yes | Why the agent wants to pay, 1 to 140 chars (`MAX_PURPOSE_LENGTH`, counted in UTF-16 code units). |
-| `expiry` | number | yes | Unix time in seconds, positive integer. The request must not be paid after this time. |
-| `buyer` | string | no | Cashaddr of the person expected to pay, same rules as `vendor`. Leave it out (do not send `null`) when unknown. |
-
-A signed request wraps the request with the agent's signature:
-
-```json
-{ "req": { ...request... }, "sig": "<64-byte Schnorr signature, 128 lowercase hex chars>" }
-```
-
-## 2. Canonical form
-
-The canonical form is the UTF-8 JSON encoding of the request with:
-
-- object keys sorted ascending (by UTF-16 code unit, as JavaScript's default sort does) at every level, including inside `amount`;
-- no whitespace between tokens;
-- fields whose value is `undefined` left out (so a request without `buyer` has no `buyer` key);
-- strings escaped as `JSON.stringify` does; numbers written as plain integers.
-
-Strings are hashed as given: no Unicode normalization. Since every field is validated before hashing, all values are strings, integers, or the `amount` object.
-
-## 3. Hashing
-
-```
-requestHash = sha256(utf8(canonical(req)))          // 32 bytes
-batchHash   = sha256(sort(h1, h2, ..., hn) concatenated)
-```
-
-For a batch, the request hashes are sorted ascending bytewise (lexicographic on the raw 32-byte values) and concatenated before hashing, so the order of the requests does not matter. A batch holds 1 to 50 (`MAX_BATCH`) distinct hashes; the reference implementation rejects empty, oversized and duplicate batches. In practice a single request uses the single memo kind, not a batch of one.
-
-## 4. Signature
-
-- Scheme: BCH Schnorr over secp256k1 (the scheme BCH uses for transaction signatures since 2019; libauth `secp256k1.signMessageHashSchnorr` / `verifySignatureSchnorr`).
-- Message: the 32-byte `requestHash` (signed directly, not hashed again).
-- Key: the private key for `agent`.
-- Encoding: 64 bytes as 128 lowercase hex chars in `sig`.
-
-A signed request is valid when it passes the schema in section 1 and `sig` verifies against `agent` and `requestHash`. Changing any field (amount, vendor, purpose, buyer, ...) changes the hash and breaks the signature. The signature proves which agent key made the request; deciding whether to trust that key is up to the wallet or user.
-
-## 5. Link format
-
-```
-payload = base64url( utf8( JSON.stringify({ req, sig }) ) )   // RFC 4648 section 5 alphabet, no "=" padding
-url     = <baseUrl>/r#<payload>
-```
-
-The payload sits in the URL fragment, so it is never sent to the web server. The JSON inside the link does not need to be canonical: the receiver parses it, validates it, and re-canonicalizes before hashing.
-
-Decoding (`decodeLink`): a payload that is not base64url, not UTF-8 JSON, or not a schema-valid `{req, sig}` is rejected with an error. Otherwise it returns the signed request with two flags: `valid` (signature check) and `expired` (`now > expiry`). Wallets must refuse to pay when `valid` is false or `expired` is true.
-
-## 6. On-chain memo
-
-The paying transaction includes exactly one output with zero value and this locking bytecode:
-
-```
-OP_RETURN <"NOD"> <kind> <hash>
-
-6a 03 4e4f44 01 <kind> 20 <32-byte hash>        // 40 bytes
-```
-
-| Kind | Byte | Hash |
-|---|---|---|
-| single | `0x01` | `requestHash` of the one request paid |
-| batch | `0x02` | `batchHash` of every request paid in the transaction |
-
-The kind is written as a 1-byte data push (`01 01` or `01 02`). Parsers should also accept the minimal-push form `OP_1` (`0x51`) / `OP_2` (`0x52`). The hash bytes are written in the order `sha256` produces them (no reversal). The whole memo is well under the 223-byte `OP_RETURN` limit even for a 50-request batch.
-
-## 7. Matching a payment to a request
-
-A transaction pays request `R` (hash `H`) when both hold:
-
-1. **Vendor output.** Some output's locking bytecode equals the locking bytecode of `R.vendor`, and
-   - for `{sats}`: the output carries no token and its value equals `sats` exactly;
-   - for `{token, units}`: the output carries a fungible token (no NFT) of category `token` with amount equal to `units` exactly.
-2. **Memo.** The transaction has a Nod memo that commits `H`:
-   - single memo: memo hash equals `H`;
-   - batch memo: the checker knows the full list of request hashes in the batch, `H` is in that list, and the memo hash equals `hashBatch(list)`. Each request in the batch has its own vendor output: when the checker also knows the batch requests, k requests with the same vendor and amount need k matching outputs (`batchRequests` in the reference `verifyReceipt`).
-
-Both conditions must hold in the same transaction. Overpaying or underpaying does not match.
-
-**Paid check.** To find whether `R` has been paid, scan the vendor address history (newest first) for a transaction that matches as above. No contract or server state is needed.
-
-## 8. Expiry and replay
-
-- A request must not be paid once `now > expiry` (now in Unix seconds). A payment confirmed after expiry is still visible on-chain; vendors decide whether to honour it, and should use block time rather than the time they saw it.
-- **Pay once.** Before paying, the wallet runs the paid check. If a matching transaction exists, it must not pay again. The random `id` means two otherwise identical requests have different hashes, so a vendor can tell a repeat purchase from a replayed link.
-- **Vendor side.** A vendor delivers once per request hash: it records `requestHash` (or the txid) when it delivers and refuses to deliver again for the same hash.
-- **Cross-network.** The cashaddr prefix in `vendor` binds a request to mainnet or chipnet; a chipnet request cannot be matched by a mainnet payment.
-- Agents should keep expiries short (minutes to hours) so a leaked link has a short useful life.
-
-## 9. Worked example
-
-These values come from the reference implementation (libauth Schnorr signing is deterministic, so they reproduce exactly).
-
-Inputs:
-
-- Agent private key: `0101010101010101010101010101010101010101010101010101010101010101`
-- Agent public key: `031b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f`
-- Vendor: P2PKH of the public key for private key `02...02` (hash160 `ebc0ee0b2ab9e8277a600c251475e22a3241a1c1`) on chipnet: `bchtest:qr4upmst92u7sfm6vqxz29r4ug4rysdpcytc853pps`
-- `id`: `6e6f642d6578616d706c652d30303031` (fixed for the example; normally random)
-
-Request:
-
-```json
-{
-  "v": 1,
-  "id": "6e6f642d6578616d706c652d30303031",
-  "agent": "031b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f",
-  "agentName": "research-bot",
-  "vendor": "bchtest:qr4upmst92u7sfm6vqxz29r4ug4rysdpcytc853pps",
-  "amount": { "sats": 2500 },
-  "purpose": "1 call to weather API",
-  "expiry": 1795400000
+```ts
+interface NodTerms {
+  v: 2;
+  id: `0x${string}`;        // bytes16: 0x + 32 hex chars, random per request
+  merchant: string;         // 1-64 chars, shown to the payer
+  payTo: `0x${string}`;     // recipient address (checksummed)
+  amountUsd: string;        // decimal string > 0, at most 2 decimals, at most "10000.00"
+  purpose: string;          // 1-140 chars
+  expiry: number;           // unix seconds
+  agent: `0x${string}`;     // address of the agent key that signs the terms (checksummed)
 }
+interface SignedTerms { terms: NodTerms; sig: `0x${string}` } // 65-byte EIP-712 signature
 ```
 
-Canonical form:
+Signing uses EIP-712. Terms are network-independent, so the domain has no `chainId`:
 
-```
-{"agent":"031b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f","agentName":"research-bot","amount":{"sats":2500},"expiry":1795400000,"id":"6e6f642d6578616d706c652d30303031","purpose":"1 call to weather API","v":1,"vendor":"bchtest:qr4upmst92u7sfm6vqxz29r4ug4rysdpcytc853pps"}
-```
-
-Hash and signature:
-
-```
-requestHash = 3a977c6df95f2c090d1f689379e6c6ae49c358df0619778d4c5a20f0bf932222
-sig         = 664f306f1bba6e4e30580b5a2d1b7d55bbc485b40a0ce38aed4249891a7cb323251a44c959a27fb67fb125c7800b204ddeef68aa1cf4a25a5d862567597941e7
-```
-
-Link (base URL `https://nod.example`):
-
-```
-https://nod.example/r#eyJyZXEiOnsidiI6MSwiaWQiOiI2ZTZmNjQyZDY1Nzg2MTZkNzA2YzY1MmQzMDMwMzAzMSIsImFnZW50IjoiMDMxYjg0YzU1NjdiMTI2NDQwOTk1ZDNlZDVhYWJhMDU2NWQ3MWUxODM0NjA0ODE5ZmY5YzE3ZjVlOWQ1ZGQwNzhmIiwiYWdlbnROYW1lIjoicmVzZWFyY2gtYm90IiwidmVuZG9yIjoiYmNodGVzdDpxcjR1cG1zdDkydTdzZm02dnF4ejI5cjR1ZzRyeXNkcGN5dGM4NTNwcHMiLCJhbW91bnQiOnsic2F0cyI6MjUwMH0sInB1cnBvc2UiOiIxIGNhbGwgdG8gd2VhdGhlciBBUEkiLCJleHBpcnkiOjE3OTU0MDAwMDB9LCJzaWciOiI2NjRmMzA2ZjFiYmE2ZTRlMzA1ODBiNWEyZDFiN2Q1NWJiYzQ4NWI0MGEwY2UzOGFlZDQyNDk4OTFhN2NiMzIzMjUxYTQ0Yzk1OWEyN2ZiNjdmYjEyNWM3ODAwYjIwNGRkZWVmNjhhYTFjZjRhMjVhNWQ4NjI1Njc1OTc5NDFlNyJ9
+```ts
+domain = { name: 'Nod', version: '2' }
+types  = { Terms: [
+  { name: 'v', type: 'uint8' },         { name: 'id', type: 'bytes16' },
+  { name: 'merchant', type: 'string' }, { name: 'payTo', type: 'address' },
+  { name: 'amountUsd', type: 'string' },{ name: 'purpose', type: 'string' },
+  { name: 'expiry', type: 'uint64' },   { name: 'agent', type: 'address' } ] }
+termsHash = hashTypedData({ domain, types, primaryType: 'Terms', message: terms })  // bytes32
 ```
 
-Paying it alone. The transaction has two outputs that matter:
+Signed terms are valid when the address recovered from `sig` equals `terms.agent`, every field passes validation, and `expiry` is in the future.
 
+**Link:** `<app>/r#<payload>`, where `payload = base64url(JSON.stringify(signedTerms))` without padding. `expiry` is a JSON number; addresses are checksummed.
+
+## 2. Settlement through HSP (HashKey Settlement Platform)
+
+Nod's server is an MCP client of HSP Agentic Payment (Streamable HTTP, default `https://mcp-qa.hashkeymerchant.com/`). HSP only accepts calls from allowlisted public IPs. Tool order:
+
+1. `get_chain_config` (cached): pick the network and token. Use the returned `network`, `chain_id`, token `address`, `coin`, `decimals` and `payment_protocol` (`eip3009` or `permit2`); never hard-code them. Preference: `NOD_PAY_NETWORK` if set, else HSK Chain testnet USDC if offered, else the first USDC entry.
+2. `create_order` with `merchant_name` = the team's HSP reporting name (`NOD_MERCHANT_NAME`), `pay_to` = `terms.payTo`, and this cart mandate:
+
+```json
+{ "contents": {
+    "id": "nod-<first 16 hex of termsHash>-<8 random hex>",
+    "user_cart_confirmation_required": true,
+    "cart_expiry": "<RFC 3339, min(terms.expiry, now + 2h)>",
+    "merchant_name": "<NOD_MERCHANT_NAME>",
+    "payment_request": {
+      "method_data": [{ "supported_methods": "https://www.x402.org/",
+        "data": { "x402Version": 2, "network": "<cfg>", "chain_id": 0, "contract_address": "<cfg>", "pay_to": "<terms.payTo>", "coin": "<cfg>" } }],
+      "details": {
+        "id": "nodpr-<first 16 hex of termsHash>-<8 random hex>",
+        "display_items": [{ "label": "<merchant>: <purpose>", "amount": { "currency": "USD", "value": "<amountUsd>" } }],
+        "total": { "label": "Total", "amount": { "currency": "USD", "value": "<amountUsd>" } } } } } }
 ```
-output: 2500 sats to bchtest:qr4upmst92u7sfm6vqxz29r4ug4rysdpcytc853pps
-        (locking bytecode 76a914ebc0ee0b2ab9e8277a600c251475e22a3241a1c188ac)
-output: 0 sats, locking bytecode
-        6a034e4f440101203a977c6df95f2c090d1f689379e6c6ae49c358df0619778d4c5a20f0bf932222
+
+3. `prepare_payment(flow_id, payer, protocol)` returns `eip712`, `token_total_raw`, `quote_expires_at` (5 minutes), `payment_payload`, `payment_mandate_contents` and `cart_hash`.
+4. The payer's wallet signs `eip712` unchanged (`eth_signTypedData_v4`, with the wallet switched to `eip712.domain.chainId`).
+5. `finalize_payment(signature, payment_payload, payment_mandate_contents, cart_hash)` returns `payment_mandate_json`, which goes unchanged to `submit_payment`.
+6. `query_payment(flow_id or payment_request_id, expected_merchant_name)` every few seconds. Keep polling on `payment-submitted`, `payment-verified`, `payment-processing`, `payment-included` and `payment-timeout`. Stop on `payment-safe` or `payment-finalized` (paid) and `payment-failed` (show `status_reason`). The transaction hash is `payment.tx_signature`. An expired quote (or Gateway code 30043) needs a new `prepare_payment` and a new signature.
+
+Nod never builds x402 JSON, JWTs or payment hashes itself; HSP's tools do. Input shapes follow the live tool schemas; the parameter names above are the documented ones.
+
+**Payment check:** a settlement pays the terms when HSP reports `payment-safe` or `payment-finalized`, and the transaction receipt on the payment network contains an ERC-20 `Transfer` of the configured token from the payer to `terms.payTo` with `value >= parseUnits(amountUsd, decimals)`.
+
+## 3. Receipt anchor on HSK Chain: `NodReceipts`
+
+HSP's EIP-3009 transfer cannot carry Nod data, so Nod records the link between terms and settlement on HSK Chain:
+
+```solidity
+struct Receipt { bytes32 settlementTx; uint256 chainId; address payer; address payTo; uint256 amount; uint64 anchoredAt; }
+event Anchored(address indexed recorder, bytes32 indexed termsHash, bytes32 settlementTx, uint256 chainId, address payer, address payTo, uint256 amount);
+error AlreadyAnchored(address recorder, bytes32 termsHash);
+error LengthMismatch();
+function anchor(bytes32 termsHash, bytes32 settlementTx, uint256 chainId, address payer, address payTo, uint256 amount) external;
+function anchorBatch(bytes32[] calldata termsHashes, bytes32[] calldata settlementTxs, uint256[] calldata chainIds, address[] calldata payers, address[] calldata payTos, uint256[] calldata amounts) external;
+function receiptOf(address recorder, bytes32 termsHash) external view returns (Receipt memory);
+function isAnchored(address recorder, bytes32 termsHash) external view returns (bool);
 ```
 
-Paying it in a batch. A second request from the same agent, with `id` `6e6f642d6578616d706c652d30303032`, `amount` `{"sats":1000}` and `purpose` `"1 call to maps API"` (other fields the same), has hash `885d225b90c50a314821e27ad0986a986727333b3c8988e99de8eb66cdee2cfb`. One transaction pays both:
+Receipts are namespaced by recorder (`msg.sender`), so nobody can block or overwrite another recorder's receipt. Verifiers trust a known recorder, such as the vendor or the Nod server. A request counts as paid once its recorder has anchored it.
 
+## 4. Autonomous payments within limits: `NodPolicy`
+
+For small agent-to-agent payments without a nod each time. Funds stay in the owner's wallet: the owner approves `NodPolicy` for an ERC-20 token and sets limits per agent.
+
+```solidity
+struct Policy { uint128 cap; uint64 period; uint64 periodStart; uint128 spent; bool active; }
+event PolicySet(address indexed owner, address indexed agent, address indexed token, uint128 cap, uint64 period);
+event PayeeAllowed(address indexed owner, address indexed agent, address indexed payee, bool allowed);
+event PolicyRevoked(address indexed owner, address indexed agent, address indexed token);
+event PolicyPaid(address indexed owner, address indexed agent, address indexed payee, address token, uint256 amount, bytes32 termsHash);
+function setPolicy(address agent, address token, uint128 cap, uint64 period) external;           // msg.sender = owner
+function allowPayee(address agent, address payee, bool allowed) external;                        // msg.sender = owner
+function revoke(address agent, address token) external;                                           // msg.sender = owner
+function pay(address owner, address token, address payee, uint256 amount, bytes32 termsHash) external; // msg.sender = agent
+function policyOf(address owner, address agent, address token) external view returns (Policy memory);
+function isPayeeAllowed(address owner, address agent, address payee) external view returns (bool);
 ```
-output: 2500 sats to the vendor
-output: 1000 sats to the vendor
-output: 0 sats, 6a034e4f44010220ca4e657d388ae06a51a6f843f1c632d1f95728ecfe29bf479629e46638860437
 
-batchHash = sha256(3a977c6d...932222 || 885d225b...ee2cfb)
-          = ca4e657d388ae06a51a6f843f1c632d1f95728ecfe29bf479629e46638860437
-```
+Errors: `ZeroAddress()`, `InvalidLimits()`, `ZeroAmount()`, `PolicyInactive(address owner, address agent, address token)`, `PayeeNotAllowed(address owner, address agent, address payee)`, `CapExceeded(uint256 available, uint256 amount)`, plus OpenZeppelin's `ReentrancyGuardReentrantCall()` and `SafeERC20FailedOperation(address token)`. `policyOf` reports the current period (after a period ends it shows `spent = 0` and the rolled-forward `periodStart`); `revoke` deletes the policy; `setPolicy` rejects a zero agent, token, cap or period.
 
-(`3a...` sorts before `88...`, so it comes first.) To confirm the first request was paid, a checker needs both request hashes: it finds a 2500-sat vendor output, checks that `3a977c6d...` is in the list, and checks that `hashBatch` of the list equals the memo hash.
+`pay` requires an active policy, an allowed payee, and `spent + amount <= cap` within the current period. A new period starts once `block.timestamp >= periodStart + period`. Tokens move with `SafeERC20.safeTransferFrom(owner, payee, amount)`. Revoking the policy, or the token approval, stops the agent immediately.
+
+## 5. Networks
+
+| Network | Chain ID | RPC | Explorer |
+| --- | --- | --- | --- |
+| HSK Chain mainnet | 177 | https://mainnet.hsk.xyz | https://hsk.blockscout.com |
+| HSK Chain testnet | 133 | https://testnet.hsk.xyz | https://testnet-explorer.hskchain.net |
+| Ethereum Sepolia (HSP test USDC) | 11155111 | public RPC | https://sepolia.etherscan.io |
+
+HSK Chain mainnet tokens: USDC (bridged) `0x054ed45810DbBAb8B27668922D110669c9D88D0a`, USDT `0xf1b50ed67a9e2cc94ad3c477779e2d4cbfff9029`. Circle test USDC on Sepolia: `0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238`. HSK testnet faucet: https://faucet.hsk.xyz/faucet. HSP payment tokens always come from `get_chain_config`.
