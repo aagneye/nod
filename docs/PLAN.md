@@ -23,14 +23,18 @@
 | Area | Status |
 | --- | --- |
 | Protocol v2 spec (`docs/PROTOCOL.md`) | Done |
-| Contracts: `NodReceipts`, `NodPolicy` (`contracts/`) | In progress |
-| Protocol package on viem (`packages/protocol`) | In progress |
-| Server: HSP MCP client, demo agent, vendor (`apps/web/server`) | Not started |
-| Web app: wallet, approval, status, receipt (`apps/web/src`) | Not started |
-| Agent CLI and MCP tools (`packages/agent`) | Not started |
-| Docs: README, deploy, demo, submission | Not started |
+| Contracts: `NodReceipts`, `NodPolicy` (`contracts/`) | Done (tests pass; not deployed yet) |
+| Protocol package on viem (`packages/protocol`) | Done |
+| Server: HSP MCP client, demo agent, vendor (`apps/web/server`) | Done (mock HSP tested; live HSP waits for the allowlist) |
+| Web app: wallet, approval, status, receipt (`apps/web/src`) | Done |
+| Agent CLI and MCP tools (`packages/agent`) | Done |
+| Docs: README, deploy, demo, submission, steps | Done |
 | HSP QA IP allowlist | Owner action, not started |
+| Merchant name (`NOD_MERCHANT_NAME`) | Owner action, not started |
 | Testnet deploy, then mainnet deploy | Owner action, not started |
+| First real HSP payment | Owner action, not started |
+| Standalone server on a fixed IP, app on Vercel | Owner action, not started |
+| Demo video, DoraHacks submission, Demo Day registration | Owner action, not started |
 
 ## Architecture
 
