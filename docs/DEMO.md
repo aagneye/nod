@@ -2,7 +2,7 @@
 
 Two scripts: the 75-second video, and the exact path a judge clicks in about 2 minutes.
 
-Placeholders: `<LIVE_URL>`, `<VIDEO_URL>`, `<SLIDES_URL>`, `<MAINNET_TXID>`.
+Placeholders: `<VIDEO_URL>`, `<SLIDES_URL>`, `<MAINNET_TXID>`.
 
 ## 75-second video
 
@@ -18,11 +18,11 @@ Record at 1080p. Screen on the left, phone (Paytaca or Cashonize) mirrored or fi
 | 6 | 0:46–0:56 | Receipt page: txid, "request matches payment", the delivered weather report. | Paid on Bitcoin Cash. Item delivered. | "The payment settles on BCH, straight to the vendor, and the vendor releases the item." |
 | 7 | 0:56–1:04 | Explorer page for `<MAINNET_TXID>`, zoom on the OP_RETURN output `NOD 01 <hash>`. | The on-chain memo commits to the exact signed request. | "Every payment carries a NOD memo with the hash of the request. That's the receipt, on chain, no database." |
 | 8 | 1:04–1:10 | Batch page: three requests, one Nod, one transaction. Then Claude calls `nod_payment_status` → PAID. | Batch approvals. The agent checks the chain itself. | "Approve many requests at once. The agent checks the chain itself." |
-| 9 | 1:10–1:15 | End card: live URL, repo, "MCP + CLI for any agent", EMBER2026 address. | **Nod** · `<LIVE_URL>` · github.com/aagneye/nod | "Your agent asks. You nod. BCH settles." |
+| 9 | 1:10–1:15 | End card: live URL, repo, "MCP + CLI for any agent", EMBER2026 address. | **Nod** · https://nod-bch.vercel.app · github.com/aagneye/nod | "Your agent asks. You nod. BCH settles." |
 
 Recording checklist:
 - Fund the phone wallet first. Use a fresh demo request so the "already paid" scan is fast.
-- Record shots 3 and 8 against the deployed URL (`NOD_BASE_URL=<LIVE_URL>` in the MCP config).
+- Record shots 3 and 8 against the deployed URL (`NOD_BASE_URL=https://nod-bch.vercel.app` in the MCP config).
 - Record the explorer shot from a real mainnet payment and keep the txid for the submission.
 - Export under 100 MB, upload unlisted to YouTube, and put the link in README, the slides and DoraHacks.
 
@@ -30,7 +30,7 @@ Recording checklist:
 
 The judge needs a phone wallet with WizardConnect (Paytaca or Cashonize) and a few cents of BCH. The demo payment is 2,000 sats (about $0.01).
 
-1. Open `<LIVE_URL>` on a laptop. The banner at the top shows the **Slides ↗**, **Repo ↗** and **EMBER2026** links.
+1. Open https://nod-bch.vercel.app on a laptop. The banner at the top shows the **Slides ↗**, **Repo ↗** and **EMBER2026** links.
 2. Click **Try the demo**. The demo agent signs a fresh request for "1 live weather report" and the approval page opens.
 3. Check the card: agent name and key, vendor address, amount in sats, purpose, expiry countdown, **signature valid**, and the network badge.
 4. Click **Connect wallet** (top right) and scan the QR with Paytaca or Cashonize. On a phone, tap **Open in wallet**, or copy the link and paste it into the wallet. Once connected, click **Nod — approve payment**.

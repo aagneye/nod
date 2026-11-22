@@ -4,7 +4,7 @@
 
 Nod is not another AI agent. It is the **approval and payment layer any agent can use**: the agent signs a payment request, you approve it with one tap in your own Bitcoin Cash wallet, and the money goes straight to the vendor with an on-chain receipt that points at the exact request you approved.
 
-**Live demo:** `<LIVE_URL>` · **Video:** `<VIDEO_URL>` · **Slides:** `<SLIDES_URL>` · Built for [BCH BLAZE 2026](https://dorahacks.io/hackathon/bchblaze2026/detail)
+**Live demo:** https://nod-bch.vercel.app · **Video:** `<VIDEO_URL>` · **Slides:** `<SLIDES_URL>` · Built for [BCH BLAZE 2026](https://dorahacks.io/hackathon/bchblaze2026/detail)
 
 ## Why
 
@@ -93,7 +93,7 @@ Build once (`node packages/agent/build.mjs`), then add to `claude_desktop_config
       "args": ["/absolute/path/to/nod/packages/agent/dist/mcp.mjs"],
       "env": {
         "NOD_NETWORK": "chipnet",
-        "NOD_BASE_URL": "<LIVE_URL>",
+        "NOD_BASE_URL": "https://nod-bch.vercel.app",
         "NOD_AGENT_NAME": "Claude"
       }
     }
@@ -101,7 +101,7 @@ Build once (`node packages/agent/build.mjs`), then add to `claude_desktop_config
 }
 ```
 
-Claude Code: `claude mcp add nod -e NOD_NETWORK=chipnet -e NOD_BASE_URL=<LIVE_URL> -- node /absolute/path/to/nod/packages/agent/dist/mcp.mjs`
+Claude Code: `claude mcp add nod -e NOD_NETWORK=chipnet -e NOD_BASE_URL=https://nod-bch.vercel.app -- node /absolute/path/to/nod/packages/agent/dist/mcp.mjs`
 
 Tools: `nod_request_payment` (returns the approval link), `nod_payment_status` (paid / unpaid / expired, with txid), `nod_list_requests`. The server is plain JSON-RPC over stdio with no SDK dependency.
 

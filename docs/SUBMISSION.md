@@ -1,7 +1,7 @@
 # Nod submission kit
 
 Copy-paste text for DoraHacks, the Widget Factory slides, X and Telegram, plus the final checklist.
-Fill these placeholders everywhere before posting: `<LIVE_URL>`, `<VIDEO_URL>`, `<SLIDES_URL>`, `<MAINNET_TXID>`, `<EMBER2026_ADDRESS>`, `<TEAM>`.
+Live demo: https://nod-bch.vercel.app (Chipnet until the mainnet switch). Fill these placeholders everywhere before posting: `<VIDEO_URL>`, `<SLIDES_URL>`, `<MAINNET_TXID>`, `<EMBER2026_ADDRESS>`, `<TEAM>`.
 
 Repo: https://github.com/aagneye/nod
 
@@ -26,13 +26,13 @@ Repo: https://github.com/aagneye/nod
 >
 > **Bitcoin Cash features used:** fast, cheap mainnet payments; OP_RETURN memos as receipts; Schnorr signatures (libauth); batch payments with many outputs in one transaction; CashTokens amounts in the protocol (PUSD-ready); public Fulcrum/Electrum servers; WizardConnect wallet connection; and an optional CashScript allowance covenant ("up to X sats per N blocks to this vendor, cancel any time").
 >
-> **Try it:** <LIVE_URL>, then click "Try the demo" and approve about $0.01 with Paytaca or Cashonize. Example mainnet payment: `<MAINNET_TXID>`.
+> **Try it:** https://nod-bch.vercel.app, then click "Try the demo" and approve about $0.01 with Paytaca or Cashonize. Example mainnet payment: `<MAINNET_TXID>`.
 >
 > **Open protocol:** the request format, hashing, link encoding and memo are specified in `docs/PROTOCOL.md`, so any wallet, agent framework or vendor can implement Nod.
 >
 > **Inspiration:** [Requisition](https://dorahacks.io/build/50833) (agents request purchases, a human approves). Nod is a new codebase for Bitcoin Cash. It adds signed requests, on-chain receipts tied to the request, batch approval, an MCP/CLI agent tool and an allowance covenant.
 
-**Links:** Live demo `<LIVE_URL>` · Video `<VIDEO_URL>` · Slides `<SLIDES_URL>` · GitHub https://github.com/aagneye/nod
+**Links:** Live demo https://nod-bch.vercel.app · Video `<VIDEO_URL>` · Slides `<SLIDES_URL>` · GitHub https://github.com/aagneye/nod
 
 **Tags:** Bitcoin Cash, AI agents, payments, MCP, WizardConnect, CashScript
 
@@ -46,7 +46,7 @@ Copy the Widget Factory template, keep its layout, and paste one block per slide
 - Nod
 - Your agent asks. You nod. BCH settles.
 - The approval and payment layer for AI agents on Bitcoin Cash
-- `<LIVE_URL>` · github.com/aagneye/nod · EMBER2026: `<EMBER2026_ADDRESS>`
+- https://nod-bch.vercel.app · github.com/aagneye/nod · EMBER2026: `<EMBER2026_ADDRESS>`
 
 **2. Problem**
 - AI agents now buy API calls, data and compute.
@@ -96,7 +96,7 @@ Copy the Widget Factory template, keep its layout, and paste one block per slide
 
 **10. Thanks / links**
 - Inspired by Requisition (dorahacks.io/build/50833)
-- `<LIVE_URL>` · github.com/aagneye/nod · `<VIDEO_URL>`
+- https://nod-bch.vercel.app · github.com/aagneye/nod · `<VIDEO_URL>`
 
 ## X thread (4 posts)
 
@@ -105,7 +105,7 @@ AI agents are starting to buy things. But should an agent hold your money?
 
 Nod: your agent asks. You nod. BCH settles. 🧵
 Built for #BCHBLAZE2026 on Bitcoin Cash mainnet.
-<LIVE_URL>
+https://nod-bch.vercel.app
 
 2/
 Nod is not another agent. It's the approval layer any agent can use.
@@ -120,7 +120,7 @@ The agent, the vendor and you can all verify it from the chain alone. Batch appr
 4/
 Works with Claude today via our MCP server, or any script via the CLI. It's an open protocol.
 
-Try it for about $0.01: <LIVE_URL>
+Try it for about $0.01: https://nod-bch.vercel.app
 Video: <VIDEO_URL>
 Code: github.com/aagneye/nod
 
@@ -132,7 +132,7 @@ Inspired by Requisition. $BCH #BitcoinCash #AIagents
 >
 > **Nod: your agent asks. You nod. BCH settles.** AI agents sign payment requests, you approve with one tap in your own wallet (WizardConnect: Paytaca or Cashonize), and the BCH payment carries an OP_RETURN receipt tied to the exact request. It works with Claude via MCP.
 >
-> Live: <LIVE_URL> (click "Try the demo", about $0.01)
+> Live: https://nod-bch.vercel.app (click "Try the demo", about $0.01)
 > Repo: https://github.com/aagneye/nod
 > Slides: <SLIDES_URL> · Video: <VIDEO_URL>
 > Mainnet tx: <MAINNET_TXID>
@@ -144,7 +144,7 @@ Inspired by Requisition. $BCH #BitcoinCash #AIagents
 Eligibility:
 - [ ] Built on **Bitcoin Cash mainnet**; `VITE_NETWORK=mainnet` and `NOD_NETWORK=mainnet` on the deployed app
 - [ ] A **useful mainnet transaction** any judge can make from the live app (demo purchase works end to end on a fresh phone + browser)
-- [ ] **Live demo** at a clickable public URL: `<LIVE_URL>`
+- [x] **Live demo** at a clickable public URL: https://nod-bch.vercel.app (Chipnet now; switch to mainnet before submitting)
 - [ ] Wallet connection through **WizardConnect**
 - [ ] **Top-of-page banner** with the slides link (Widget Factory template), repo link, and **EMBER2026 CashTokens address**
 - [ ] Slides made from the **Widget Factory template**, shared "anyone with link can view"
@@ -156,7 +156,7 @@ Eligibility:
 Content:
 - [ ] Video (60–90 s) uploaded; link in README, slides and DoraHacks
 - [ ] One real mainnet txid opened on the explorer and pasted above
-- [ ] README placeholders replaced (`<LIVE_URL>`, `<VIDEO_URL>`, `<SLIDES_URL>`)
+- [ ] README placeholders replaced (`<VIDEO_URL>`, `<SLIDES_URL>`; the live URL is filled in)
 - [ ] MCP snippet tested once in Claude Desktop or Claude Code against the live URL
 - [ ] Every link opened in a private window (live app, slides, video, repo, explorer)
 
