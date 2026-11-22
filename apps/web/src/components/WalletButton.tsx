@@ -117,7 +117,7 @@ export function WalletButton() {
             uri={uri}
             qrUri={qrUri}
             onCopy={(text) => void copyText(text)}
-            subtitle="Scan with Paytaca or Cashonize, or open the link below on this phone"
+            subtitle="Scan with Paytaca or Selene, or open the link below on this phone"
             theme={{ qrSize: qrSizeForViewport() }}
           />
           <PairOnThisDevice uri={uri} />

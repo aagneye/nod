@@ -80,7 +80,7 @@ export default function RequestPage() {
     setPaying(true);
     try {
       if (wallet.state !== 'connected' || !wallet.manager) {
-        throw new Error('Connect your wallet first — scan the QR with Paytaca or Cashonize.');
+        throw new Error('Connect your wallet first — scan the QR with Paytaca or Selene.');
       }
       const manager = wallet.manager;
       const utxos = await collectUtxos(manager);
