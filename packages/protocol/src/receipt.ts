@@ -1,153 +1,127 @@
 /**
- * Receipt checks: does a transaction pay a Nod Request, and has a request been paid?
+ * Settlement check (PROTOCOL §2, "Payment check"): the settlement transaction succeeded and
+ * contains an ERC-20 Transfer of the configured token from the payer to `terms.payTo` worth
+ * at least the terms' amount.
  */
-import {
-  binToHex,
-  binsAreEqual,
-  cashAddressToLockingBytecode,
-  decodeTransaction,
-  hexToBin,
-  type TransactionCommon,
-} from '@bitauth/libauth';
-import { sortHistoryNewestFirst, type ChainReader } from './electrum.js';
-import { decodeMemo, type Memo } from './memo.js';
-import { hashBatch } from './request.js';
-import type { NodRequest, ReceiptCheck, TokenAmount } from './types.js';
+import { decodeEventLog, isAddress, toEventSelector, type Address, type Hash, type Hex } from 'viem';
+import { ERC20_ABI } from './contracts.js';
 
-export interface ReceiptOptions {
-  /**
-   * All request hashes committed by a batch memo (any order is fine if hashBatch sorts).
-   * Needed to accept a batch payment; without it, batch memos never match.
-   */
-  batchHashes?: Uint8Array[];
-  /**
-   * All requests in the batch, when known. Each request must then have its own vendor output:
-   * if k requests share a vendor and amount, the transaction needs k such outputs.
-   * Without it, one output could "pay" several identical requests.
-   */
-  batchRequests?: NodRequest[];
+/** The parts of a log the check reads (a viem Log fits). */
+export interface SettlementLog {
+  address: string;
+  topics: readonly Hex[];
+  data: Hex;
 }
 
-export interface FindPaymentOptions extends ReceiptOptions {
-  /** Stop after looking at this many history entries (default 200). */
-  maxTxs?: number;
+/** The parts of a transaction receipt the check reads (a viem TransactionReceipt fits). */
+export interface SettlementReceipt {
+  status: string;
+  logs: readonly SettlementLog[];
 }
 
-const isTokenAmount = (a: NodRequest['amount']): a is TokenAmount => typeof (a as TokenAmount).token === 'string';
-
-const vendorBytecode = (vendor: string): Uint8Array => {
-  const decoded = cashAddressToLockingBytecode(vendor);
-  if (typeof decoded === 'string') throw new Error(`Invalid vendor address ${vendor}: ${decoded}`);
-  return decoded.bytecode;
-};
-
-/** Check a decoded transaction against a request. Pure, no network. */
-export function checkTransaction(
-  tx: TransactionCommon,
-  req: NodRequest,
-  requestHash: Uint8Array,
-  opts: ReceiptOptions = {},
-): ReceiptCheck {
-  const reasons: string[] = [];
-  const vendorLocking = vendorBytecode(req.vendor);
-
-  // Vendor output + amount.
-  const vendorOutputs = tx.outputs.filter((o) => binsAreEqual(o.lockingBytecode, vendorLocking));
-  if (vendorOutputs.length === 0) {
-    reasons.push('vendor output missing');
-  } else {
-    const amount = req.amount;
-    const matching = vendorOutputs.filter((o) => {
-      if (isTokenAmount(amount)) {
-        return (
-          o.token !== undefined &&
-          o.token.nft === undefined &&
-          binToHex(o.token.category) === amount.token.toLowerCase() &&
-          o.token.amount === BigInt(amount.units)
-        );
-      }
-      return o.token === undefined && o.valueSatoshis === BigInt(amount.sats);
-    }).length;
-    // Identical (vendor, amount) requests are interchangeable, so counting per class
-    // is exactly a one-to-one match of requests to outputs.
-    const key = paymentKey(req);
-    const needed = opts.batchRequests ? opts.batchRequests.filter((r) => paymentKey(r) === key).length : 1;
-    if (matching === 0) reasons.push('amount mismatch');
-    else if (matching < needed) reasons.push(`batch underpaid: ${needed} outputs needed, ${matching} found`);
-  }
-
-  // Memo.
-  const memos = tx.outputs.map((o) => decodeMemo(o.lockingBytecode)).filter((m): m is Memo => m !== null);
-  if (memos.length === 0) {
-    reasons.push('memo missing');
-  } else if (!memos.some((m) => memoCommits(m, requestHash, opts))) {
-    const hasBatch = memos.some((m) => m.kind === 'batch');
-    reasons.push(hasBatch && !opts.batchHashes ? 'memo hash mismatch (batch memo; batch hashes not provided)' : 'memo hash mismatch');
-  }
-
-  return { ok: reasons.length === 0, reasons };
+/** Anything with viem's PublicClient.getTransactionReceipt. */
+export interface SettlementClient {
+  getTransactionReceipt(args: { hash: Hash }): Promise<SettlementReceipt>;
 }
 
-const paymentKey = (r: NodRequest): string =>
-  `${r.vendor.toLowerCase()}|${isTokenAmount(r.amount) ? `${r.amount.token.toLowerCase()}:${r.amount.units}` : `sats:${r.amount.sats}`}`;
-
-function memoCommits(memo: Memo, requestHash: Uint8Array, opts: ReceiptOptions): boolean {
-  if (memo.kind === 'single') return binsAreEqual(memo.hash, requestHash);
-  const batch = opts.batchHashes;
-  if (!batch || batch.length === 0) return false;
-  if (!batch.some((h) => binsAreEqual(h, requestHash))) return false;
-  return binsAreEqual(memo.hash, hashBatch(batch));
+export interface CheckSettlementInput {
+  /** Public client for the payment network (the chain HSP settled on). */
+  client: SettlementClient;
+  txHash: Hash;
+  /** Token contract from the HSP payment option. */
+  token: Address;
+  payer: Address;
+  payTo: Address;
+  /** Smallest acceptable transfer in base units, e.g. usdToRaw(terms.amountUsd, option.decimals). */
+  minRaw: bigint;
 }
 
-const decodeHex = (hex: string): TransactionCommon | string => {
-  try {
-    return decodeTransaction(hexToBin(hex));
-  } catch (e) {
-    return e instanceof Error ? e.message : String(e);
-  }
-};
+export interface SettlementCheck {
+  ok: boolean;
+  /** Why the check failed; empty when ok. */
+  reasons: string[];
+  /** Value of the best matching Transfer (payer to payTo), when there is one. */
+  transferredRaw?: bigint;
+}
 
-/** Fetch a transaction and check that it pays `req` and commits `requestHash` in its memo. */
-export async function verifyReceipt(
-  chain: ChainReader,
-  txid: string,
-  req: NodRequest,
-  requestHash: Uint8Array,
-  opts: ReceiptOptions = {},
-): Promise<ReceiptCheck> {
-  let hex: string;
-  try {
-    hex = await chain.getTransactionHex(txid);
-  } catch (e) {
-    return { ok: false, reasons: [`transaction not found: ${e instanceof Error ? e.message : String(e)}`] };
+export const TRANSFER_TOPIC = toEventSelector('Transfer(address,address,uint256)');
+
+interface Transfer {
+  from: Address;
+  to: Address;
+  value: bigint;
+}
+
+const sameAddress = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase();
+
+const errorMessage = (error: unknown): string =>
+  error instanceof Error ? ((error as { shortMessage?: string }).shortMessage ?? error.message) : String(error);
+
+function tokenTransfers(logs: readonly SettlementLog[], token: Address): Transfer[] {
+  const transfers: Transfer[] = [];
+  for (const log of logs) {
+    if (!sameAddress(log.address, token) || log.topics.length !== 3 || log.topics[0]?.toLowerCase() !== TRANSFER_TOPIC) {
+      continue;
+    }
+    try {
+      const { args } = decodeEventLog({
+        abi: ERC20_ABI,
+        eventName: 'Transfer',
+        topics: log.topics as [Hex, ...Hex[]],
+        data: log.data,
+      });
+      transfers.push({ from: args.from, to: args.to, value: args.value });
+    } catch {
+      // not an ERC-20 Transfer (e.g. malformed data); ignore
+    }
   }
-  const tx = decodeHex(hex);
-  if (typeof tx === 'string') return { ok: false, reasons: [`transaction could not be decoded: ${tx}`] };
-  return checkTransaction(tx, req, requestHash, opts);
+  return transfers;
 }
 
 /**
- * Paid check: scan the vendor's history newest-first and return the first transaction that
- * pays `req` exactly and commits `requestHash` (single memo, or batch memo when batchHashes given).
+ * Check a settlement on its payment network. Throws only on invalid arguments;
+ * a receipt that cannot be fetched (e.g. not mined yet) comes back as ok: false with a reason.
  */
-export async function findPayment(
-  chain: ChainReader,
-  req: NodRequest,
-  requestHash: Uint8Array,
-  opts: FindPaymentOptions = {},
-): Promise<{ txid: string } | null> {
-  const history = sortHistoryNewestFirst(await chain.getHistory(req.vendor));
-  const max = opts.maxTxs ?? 200;
-  for (const { txid } of history.slice(0, max)) {
-    let hex: string;
-    try {
-      hex = await chain.getTransactionHex(txid);
-    } catch {
-      continue;
-    }
-    const tx = decodeHex(hex);
-    if (typeof tx === 'string') continue;
-    if (checkTransaction(tx, req, requestHash, opts).ok) return { txid };
+export async function checkSettlement(input: CheckSettlementInput): Promise<SettlementCheck> {
+  const { client, txHash, token, payer, payTo, minRaw } = input;
+  if (typeof txHash !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(txHash)) {
+    throw new Error(`checkSettlement: txHash must be a 32-byte hex hash, got ${String(txHash)}`);
   }
-  return null;
+  for (const [name, value] of [['token', token], ['payer', payer], ['payTo', payTo]] as const) {
+    if (typeof value !== 'string' || !isAddress(value, { strict: false })) {
+      throw new Error(`checkSettlement: ${name} must be an address, got ${String(value)}`);
+    }
+  }
+  if (typeof minRaw !== 'bigint' || minRaw < 0n) {
+    throw new Error('checkSettlement: minRaw must be a non-negative bigint');
+  }
+
+  let receipt: SettlementReceipt;
+  try {
+    receipt = await client.getTransactionReceipt({ hash: txHash });
+  } catch (error) {
+    return { ok: false, reasons: [`Could not get the receipt of ${txHash}: ${errorMessage(error)}`] };
+  }
+  if (receipt.status !== 'success') {
+    return { ok: false, reasons: [`Transaction ${txHash} did not succeed (status: ${receipt.status})`] };
+  }
+
+  const transfers = tokenTransfers(receipt.logs, token);
+  if (transfers.length === 0) {
+    return { ok: false, reasons: [`Transaction ${txHash} has no Transfer of token ${token}`] };
+  }
+  const matching = transfers.filter((t) => sameAddress(t.from, payer) && sameAddress(t.to, payTo));
+  if (matching.length === 0) {
+    const seen = transfers.map((t) => `${t.from} -> ${t.to} (${t.value})`).join(', ');
+    return { ok: false, reasons: [`No Transfer of ${token} from ${payer} to ${payTo}; found ${seen}`] };
+  }
+  const best = matching.reduce((a, b) => (b.value > a.value ? b : a));
+  if (best.value < minRaw) {
+    return {
+      ok: false,
+      reasons: [`Transfer of ${best.value} is less than the ${minRaw} required`],
+      transferredRaw: best.value,
+    };
+  }
+  return { ok: true, reasons: [], transferredRaw: best.value };
 }

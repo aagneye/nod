@@ -1,220 +1,165 @@
-import { describe, expect, it, vi } from 'vitest';
-import { binToHex, hashTransaction, hexToBin } from '@bitauth/libauth';
+import { describe, expect, it } from 'vitest';
+import {
+  createPublicClient,
+  encodeAbiParameters,
+  encodeEventTopics,
+  http,
+  parseAbi,
+  type Address,
+  type Hash,
+  type Hex,
+} from 'viem';
+import {
+  ERC20_ABI,
+  TRANSFER_TOPIC,
+  checkSettlement,
+  hskTestnet,
+  usdToRaw,
+  type SettlementClient,
+  type SettlementLog,
+  type SettlementReceipt,
+} from '../src/index.js';
+import { HSK_TEST_USDC, HSK_TEST_USDT, OTHER, PAYER, VENDOR } from './fixtures.js';
 
-vi.mock('../src/request.js', async () => {
-  const { fakeHashBatch } = await import('./helpers.js');
-  return { hashBatch: fakeHashBatch };
-});
+const TX: Hash = `0x${'cd'.repeat(32)}`;
+const MIN = usdToRaw('12.50', 6);
 
-import { buildPayment } from '../src/tx.js';
-import { findPayment, verifyReceipt } from '../src/receipt.js';
-import type { ChainReader } from '../src/electrum.js';
-import type { NodRequest } from '../src/types.js';
-import { bchUtxo, h, testWallet, tokenUtxo } from './helpers.js';
-
-const buyer = testWallet('buyer');
-const vendor = testWallet('vendor');
-const other = testWallet('other');
-const CATEGORY = 'cc'.repeat(32);
-
-const makeReq = (amount: NodRequest['amount'], vendorAddr = vendor.address): NodRequest => ({
-  v: 1,
-  id: '00'.repeat(16),
-  agent: '02' + '11'.repeat(32),
-  agentName: 'test-bot',
-  vendor: vendorAddr,
-  amount,
-  purpose: 'test',
-  expiry: 2_000_000_000,
-});
-
-class FakeChain implements ChainReader {
-  txs = new Map<string, string>();
-  history: { txid: string; height: number }[] = [];
-  add(txHex: string, height: number): string {
-    const txid = hashTransaction(hexToBin(txHex));
-    this.txs.set(txid, txHex);
-    this.history.push({ txid, height });
-    return txid;
-  }
-  async getHistory() {
-    return this.history;
-  }
-  async getTransactionHex(txid: string) {
-    const hex = this.txs.get(txid);
-    if (!hex) throw new Error('not found');
-    return hex;
-  }
+function transferLog(token: Address, from: Address, to: Address, value: bigint): SettlementLog {
+  return {
+    address: token,
+    topics: encodeEventTopics({ abi: ERC20_ABI, eventName: 'Transfer', args: { from, to } }) as Hex[],
+    data: encodeAbiParameters([{ type: 'uint256' }], [value]),
+  };
 }
 
-const pay = (payments: Parameters<typeof buildPayment>[0]['payments'], memoHash?: Uint8Array) =>
-  buildPayment({
-    network: 'chipnet',
-    payments,
-    utxos: [bchUtxo(buyer.lockingBytecode, 100_000n), tokenUtxo(buyer.lockingBytecode, CATEGORY, 1000n)],
-    changeAddress: buyer.address,
-    ...(memoHash ? { memoHash } : {}),
-  }).txHex;
+const APPROVAL_ABI = parseAbi(['event Approval(address indexed owner, address indexed spender, uint256 value)']);
+const approvalLog: SettlementLog = {
+  address: HSK_TEST_USDC,
+  topics: encodeEventTopics({ abi: APPROVAL_ABI, eventName: 'Approval', args: { owner: PAYER, spender: VENDOR } }) as Hex[],
+  data: encodeAbiParameters([{ type: 'uint256' }], [MIN]),
+};
 
-describe('verifyReceipt', () => {
-  const req = makeReq({ sats: 2500 });
-  const reqHash = h('req');
+function fakeClient(receipt: SettlementReceipt | Error): SettlementClient & { calls: Hash[] } {
+  const calls: Hash[] = [];
+  return {
+    calls,
+    async getTransactionReceipt({ hash }) {
+      calls.push(hash);
+      if (receipt instanceof Error) throw receipt;
+      return receipt;
+    },
+  };
+}
 
-  it('accepts a matching single payment', async () => {
-    const chain = new FakeChain();
-    const txid = chain.add(pay([{ vendor: req.vendor, amount: req.amount, requestHash: reqHash }]), 100);
-    expect(await verifyReceipt(chain, txid, req, reqHash)).toEqual({ ok: true, reasons: [] });
+const check = (receipt: SettlementReceipt | Error, overrides: Partial<Parameters<typeof checkSettlement>[0]> = {}) =>
+  checkSettlement({
+    client: fakeClient(receipt),
+    txHash: TX,
+    token: HSK_TEST_USDC,
+    payer: PAYER,
+    payTo: VENDOR,
+    minRaw: MIN,
+    ...overrides,
   });
 
-  it('reports vendor output missing', async () => {
-    const chain = new FakeChain();
-    const txid = chain.add(pay([{ vendor: other.address, amount: req.amount, requestHash: reqHash }]), 100);
-    const r = await verifyReceipt(chain, txid, req, reqHash);
-    expect(r.ok).toBe(false);
-    expect(r.reasons).toContain('vendor output missing');
-  });
-
-  it('reports amount mismatch', async () => {
-    const chain = new FakeChain();
-    const txid = chain.add(pay([{ vendor: req.vendor, amount: { sats: 2400 }, requestHash: reqHash }]), 100);
-    expect((await verifyReceipt(chain, txid, req, reqHash)).reasons).toEqual(['amount mismatch']);
-  });
-
-  it('reports memo hash mismatch', async () => {
-    const chain = new FakeChain();
-    const txid = chain.add(pay([{ vendor: req.vendor, amount: req.amount, requestHash: h('other') }]), 100);
-    expect((await verifyReceipt(chain, txid, req, reqHash)).reasons).toEqual(['memo hash mismatch']);
-  });
-
-  it('reports memo missing', async () => {
-    const chain = new FakeChain();
-    const built = buildPayment({
-      network: 'chipnet',
-      payments: [{ vendor: req.vendor, amount: req.amount, requestHash: reqHash }],
-      utxos: [bchUtxo(buyer.lockingBytecode, 100_000n)],
-      changeAddress: buyer.address,
+describe('checkSettlement', () => {
+  it('passes for a successful Transfer from payer to payTo of at least minRaw', async () => {
+    const client = fakeClient({
+      status: 'success',
+      logs: [
+        transferLog(HSK_TEST_USDT, PAYER, VENDOR, MIN), // other token
+        approvalLog, // other event
+        transferLog(HSK_TEST_USDC, PAYER, VENDOR, MIN),
+      ],
     });
-    // Strip the memo output.
-    const tx = { ...built.transaction, outputs: built.transaction.outputs.filter((o) => o.lockingBytecode[0] !== 0x6a) };
-    const { encodeTransaction } = await import('@bitauth/libauth');
-    const txid = chain.add(binToHex(encodeTransaction(tx)), 100);
-    expect((await verifyReceipt(chain, txid, req, reqHash)).reasons).toEqual(['memo missing']);
+    const result = await checkSettlement({ client, txHash: TX, token: HSK_TEST_USDC, payer: PAYER, payTo: VENDOR, minRaw: MIN });
+    expect(result).toEqual({ ok: true, reasons: [], transferredRaw: MIN });
+    expect(client.calls).toEqual([TX]);
   });
 
-  it('reports a missing transaction', async () => {
-    const r = await verifyReceipt(new FakeChain(), 'ff'.repeat(32), req, reqHash);
-    expect(r.ok).toBe(false);
-    expect(r.reasons[0]).toMatch(/transaction not found/);
-  });
-
-  it('checks token payments', async () => {
-    const tReq = makeReq({ token: CATEGORY, units: '300' }, vendor.tokenAddress);
-    const chain = new FakeChain();
-    const txid = chain.add(pay([{ vendor: tReq.vendor, amount: tReq.amount, requestHash: reqHash }]), 100);
-    expect((await verifyReceipt(chain, txid, tReq, reqHash)).ok).toBe(true);
-    const wrong = makeReq({ token: CATEGORY, units: '301' }, vendor.tokenAddress);
-    expect((await verifyReceipt(chain, txid, wrong, reqHash)).reasons).toEqual(['amount mismatch']);
-    // A BCH request for TOKEN_OUTPUT_SATS must not be satisfied by the token output.
-    const bchReq = makeReq({ sats: 1000 }, vendor.tokenAddress);
-    expect((await verifyReceipt(chain, txid, bchReq, reqHash)).reasons).toEqual(['amount mismatch']);
-  });
-
-  it('accepts batch payments only with the batch hashes', async () => {
-    const reqB = makeReq({ sats: 1500 }, other.address);
-    const hashes = [reqHash, h('reqB')];
-    const chain = new FakeChain();
-    const txid = chain.add(
-      pay([
-        { vendor: req.vendor, amount: req.amount, requestHash: hashes[0]! },
-        { vendor: reqB.vendor, amount: reqB.amount, requestHash: hashes[1]! },
-      ]),
-      100,
-    );
-    expect((await verifyReceipt(chain, txid, req, reqHash)).ok).toBe(false);
-    expect(await verifyReceipt(chain, txid, req, reqHash, { batchHashes: hashes })).toEqual({ ok: true, reasons: [] });
-    expect(await verifyReceipt(chain, txid, reqB, hashes[1]!, { batchHashes: [...hashes].reverse() })).toEqual({
-      ok: true,
-      reasons: [],
+  it('compares addresses case-insensitively and accepts overpayment', async () => {
+    const receipt = { status: 'success', logs: [transferLog(HSK_TEST_USDC, PAYER, VENDOR, MIN + 1n)] };
+    receipt.logs[0]!.address = HSK_TEST_USDC.toUpperCase().replace('0X', '0x');
+    const result = await check(receipt, {
+      token: HSK_TEST_USDC.toLowerCase() as Address,
+      payer: PAYER.toLowerCase() as Address,
+      payTo: VENDOR.toLowerCase() as Address,
     });
-    // Request not in the batch list.
-    expect((await verifyReceipt(chain, txid, req, h('nope'), { batchHashes: hashes })).ok).toBe(false);
-    // Wrong batch list.
-    expect((await verifyReceipt(chain, txid, req, reqHash, { batchHashes: [reqHash] })).ok).toBe(false);
+    expect(result).toEqual({ ok: true, reasons: [], transferredRaw: MIN + 1n });
   });
 
-  it('needs one output per identical batch request when the batch requests are known', async () => {
-    const reqA = { ...req, id: 'aa'.repeat(16) };
-    const reqB = { ...req, id: 'bb'.repeat(16) };
-    const hashes = [h('A'), h('B')];
-    const chain = new FakeChain();
-    // Batch memo commits both requests, but only one 2500-sat output pays the vendor.
-    const { fakeHashBatch } = await import('./helpers.js');
-    const underpaid = chain.add(
-      pay(
-        [
-          { vendor: req.vendor, amount: req.amount, requestHash: hashes[0]! },
-          { vendor: other.address, amount: { sats: 600 }, requestHash: h('filler') },
-        ],
-        fakeHashBatch(hashes),
-      ),
-      100,
-    );
-    const opts = { batchHashes: hashes, batchRequests: [reqA, reqB] };
-    const r = await verifyReceipt(chain, underpaid, reqB, hashes[1]!, opts);
-    expect(r.ok).toBe(false);
-    expect(r.reasons).toEqual(['batch underpaid: 2 outputs needed, 1 found']);
-
-    const paid = chain.add(
-      pay([
-        { vendor: req.vendor, amount: req.amount, requestHash: hashes[0]! },
-        { vendor: req.vendor, amount: req.amount, requestHash: hashes[1]! },
-      ]),
-      101,
-    );
-    expect(await verifyReceipt(chain, paid, reqB, hashes[1]!, opts)).toEqual({ ok: true, reasons: [] });
-  });
-});
-
-describe('findPayment', () => {
-  const req = makeReq({ sats: 2500 });
-  const reqHash = h('find');
-
-  it('finds the paying tx among unrelated history, newest first', async () => {
-    const chain = new FakeChain();
-    chain.add(pay([{ vendor: req.vendor, amount: { sats: 9999 }, requestHash: h('x') }]), 10);
-    const older = chain.add(pay([{ vendor: req.vendor, amount: req.amount, requestHash: reqHash }]), 50);
-    chain.add(pay([{ vendor: req.vendor, amount: req.amount, requestHash: h('y') }]), 60);
-    const mempool = chain.add(
-      buildPayment({
-        network: 'chipnet',
-        payments: [{ vendor: req.vendor, amount: req.amount, requestHash: reqHash }],
-        utxos: [bchUtxo(buyer.lockingBytecode, 77_000n)],
-        changeAddress: buyer.address,
-      }).txHex,
-      0,
-    );
-    expect(await findPayment(chain, req, reqHash)).toEqual({ txid: mempool });
-    chain.history = chain.history.filter((e) => e.txid !== mempool);
-    expect(await findPayment(chain, req, reqHash)).toEqual({ txid: older });
+  it('fails when the Transfer went to someone else', async () => {
+    const result = await check({ status: 'success', logs: [transferLog(HSK_TEST_USDC, PAYER, OTHER, MIN)] });
+    expect(result.ok).toBe(false);
+    expect(result.transferredRaw).toBeUndefined();
+    expect(result.reasons).toHaveLength(1);
+    expect(result.reasons[0]).toMatch(new RegExp(`No Transfer of .* to ${VENDOR}; found ${PAYER} -> ${OTHER}`));
   });
 
-  it('returns null when unpaid', async () => {
-    const chain = new FakeChain();
-    chain.add(pay([{ vendor: req.vendor, amount: req.amount, requestHash: h('y') }]), 60);
-    expect(await findPayment(chain, req, reqHash)).toBeNull();
+  it('fails when the Transfer came from someone else', async () => {
+    const result = await check({ status: 'success', logs: [transferLog(HSK_TEST_USDC, OTHER, VENDOR, MIN)] });
+    expect(result.ok).toBe(false);
+    expect(result.reasons[0]).toMatch(/No Transfer of/);
   });
 
-  it('finds batch payments when batch hashes are given', async () => {
-    const hashes = [reqHash, h('sibling')];
-    const chain = new FakeChain();
-    const txid = chain.add(
-      pay([
-        { vendor: req.vendor, amount: req.amount, requestHash: hashes[0]! },
-        { vendor: other.address, amount: { sats: 800 }, requestHash: hashes[1]! },
-      ]),
-      5,
-    );
-    expect(await findPayment(chain, req, reqHash)).toBeNull();
-    expect(await findPayment(chain, req, reqHash, { batchHashes: hashes })).toEqual({ txid });
+  it('fails when the Transfer is too small', async () => {
+    const result = await check({
+      status: 'success',
+      logs: [transferLog(HSK_TEST_USDC, PAYER, VENDOR, MIN - 2n), transferLog(HSK_TEST_USDC, PAYER, VENDOR, MIN - 1n)],
+    });
+    expect(result).toEqual({
+      ok: false,
+      reasons: [`Transfer of ${MIN - 1n} is less than the ${MIN} required`],
+      transferredRaw: MIN - 1n,
+    });
+  });
+
+  it('fails for a reverted transaction', async () => {
+    const result = await check({ status: 'reverted', logs: [] });
+    expect(result.ok).toBe(false);
+    expect(result.reasons[0]).toMatch(/did not succeed \(status: reverted\)/);
+  });
+
+  it('fails when the token Transfer log is missing', async () => {
+    for (const logs of [
+      [],
+      [approvalLog],
+      [transferLog(HSK_TEST_USDT, PAYER, VENDOR, MIN)],
+      // ERC-721 style Transfer (tokenId indexed, 4 topics) from the token address
+      [
+        {
+          address: HSK_TEST_USDC,
+          topics: [...(transferLog(HSK_TEST_USDC, PAYER, VENDOR, 0n).topics as Hex[]), encodeAbiParameters([{ type: 'uint256' }], [MIN])],
+          data: '0x' as Hex,
+        },
+      ],
+      // right topic but truncated data
+      [{ ...transferLog(HSK_TEST_USDC, PAYER, VENDOR, MIN), data: '0x1234' as Hex }],
+    ]) {
+      const result = await check({ status: 'success', logs });
+      expect(result.ok).toBe(false);
+      expect(result.reasons[0]).toMatch(/has no Transfer of token/);
+    }
+  });
+
+  it('reports a receipt that cannot be fetched', async () => {
+    const result = await check(new Error('Transaction receipt with hash "0xcd..." could not be found.'));
+    expect(result.ok).toBe(false);
+    expect(result.reasons[0]).toMatch(/Could not get the receipt .* could not be found/);
+  });
+
+  it('throws on invalid arguments', async () => {
+    const ok = { status: 'success', logs: [] };
+    await expect(check(ok, { txHash: '0x1234' as Hash })).rejects.toThrow(/txHash/);
+    await expect(check(ok, { token: 'nope' as Address })).rejects.toThrow(/token/);
+    await expect(check(ok, { payTo: '0x12' as Address })).rejects.toThrow(/payTo/);
+    await expect(check(ok, { minRaw: -1n })).rejects.toThrow(/minRaw/);
+  });
+
+  it('uses the standard Transfer topic and accepts a viem PublicClient', () => {
+    expect(TRANSFER_TOPIC).toBe('0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef');
+    // Compile-time check: a real PublicClient satisfies SettlementClient (no request is made).
+    const client: SettlementClient = createPublicClient({ chain: hskTestnet, transport: http() });
+    expect(typeof client.getTransactionReceipt).toBe('function');
   });
 });
