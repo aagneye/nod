@@ -10,7 +10,7 @@ The name "Selene" was dropped because Selene Wallet is a sponsor and its lead de
 
 Step-by-step tasks for each person are in [`docs/STEPS.md`](STEPS.md).
 
-## Progress (last updated Nov 21, 2026)
+## Progress (last updated Nov 22, 2026)
 
 Update this section and the boxes in `docs/STEPS.md` whenever a task is finished.
 
@@ -20,9 +20,9 @@ Update this section and the boxes in `docs/STEPS.md` whenever a task is finished
 | Protocol and chain (`packages/protocol`) | Aagneye | ✅ Done: 55 tests green (+1 skipped) |
 | Allowance contract (`contracts/`) | Aagneye | ✅ Done: 11 tests green (third output limited to a zero-value memo, Nov 21) |
 | Web app (`apps/web`) | Person B | 🟨 Built: approval, receipt + vendor item, batch with one-click demo and already-paid check, How it works page (covenant source), banner, wallet (relay-serialized `sourceOutputs`), favicon + social card, lazy routes, 375px. Not yet signed with a real wallet |
-| Agent tool, demo API, launch | Person C | 🟨 Built: `/api/demo-agent`, `/api/vendor/buy` (18 tests, `?count=1..5` batch demo), Vercel Build Output bundling, CLI + MCP server (12 tests), README, DEMO, SUBMISSION drafts. Not deployed |
+| Agent tool, demo API, launch | Person C | 🟨 Built: `/api/demo-agent`, `/api/vendor/buy` (18 tests, `?count=1..5` batch demo), Vercel Build Output bundling, CLI + MCP server (12 tests), README, DEMO, SUBMISSION drafts. **Live on Chipnet at https://nod-bch.vercel.app** (prebuilt deploy, Nov 22); mainnet env not set yet |
 | First Chipnet payment end-to-end | A + B | ⬜ Next step: needs a real WizardConnect wallet (launch checklist step 1) |
-| First mainnet payment end-to-end | A + B + C | ⬜ After Vercel deploy + env vars |
+| First mainnet payment end-to-end | A + B + C | ⬜ After the mainnet env switch (`docs/DEPLOY.md` §6) |
 | DoraHacks submission | Person C | ⬜ Text ready in `docs/SUBMISSION.md`; needs EMBER2026 address, slides, video, posts |
 
 **Done (Person A):**

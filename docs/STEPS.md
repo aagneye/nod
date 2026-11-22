@@ -413,12 +413,13 @@ Done when: `npx vitest run packages/agent` passes; `node packages/agent/build.mj
 
 Builders cannot do these. Do them top to bottom; each step depends on the one before.
 
-1. [ ] **Real-wallet Chipnet test (biggest remaining risk).** `npm run dev -w @nod/web` with `VITE_NETWORK=chipnet`; fund a Paytaca or Cashonize chipnet wallet from tbch.googol.cash; connect via WizardConnect QR, demo button → Nod → approve on the phone → receipt shows "request matches payment" and the delivered item. Covers A10, B3, B4, B5 and Integration checkpoint 2. Also try the `wiz://` open-in-wallet link on a phone.
-2. [ ] Run `npm install` at the repo root (registers `packages/agent` in `package-lock.json`), then `npm test`; commit the lockfile.
+1. [ ] **Real-wallet Chipnet test (biggest remaining risk).** Open https://nod-bch.vercel.app (live, Chipnet) or run `npm run dev -w @nod/web`; fund a Paytaca or Cashonize chipnet wallet from tbch.googol.cash; connect via WizardConnect QR, demo button → Nod → approve on the phone → receipt shows "request matches payment" and the delivered item. Covers A10, B3, B4, B5 and Integration checkpoint 2. Also try the `wiz://` open-in-wallet link on a phone.
+2. [x] Run `npm install` at the repo root (registers `packages/agent` in `package-lock.json`), then `npm test`; commit the lockfile.
 3. [ ] Make the GitHub repo public (banner and footer point to `github.com/aagneye/nod`).
 4. [ ] Get the team's **EMBER2026 CashTokens address**.
 5. [ ] Copy the Widget Factory slide template, paste the text from `docs/SUBMISSION.md`, share "anyone with link can view".
-6. [ ] Create the Vercel project (Root Directory `apps/web`) and set env vars **before the first build** (`VITE_*` are baked in at build time): `VITE_NETWORK=mainnet`, `NOD_NETWORK=mainnet`, `NOD_DEMO_AGENT_KEY` (generate per `docs/DEPLOY.md`), `NOD_DEMO_VENDOR` (mainnet address the team controls), `NOD_DEMO_SATS` (~$0.01 at today's price), `VITE_EMBER2026_ADDRESS`, `VITE_SLIDES_URL`. Deploy and run the checks in `docs/DEPLOY.md` (C3).
+6. [x] Vercel project `nod-bch` created and **live on Chipnet at https://nod-bch.vercel.app** (Nov 22, prebuilt deploy; all checks in `docs/DEPLOY.md` §4 pass).
+6b. [ ] **Switch the live site to mainnet** (`docs/DEPLOY.md` §6): set env vars (`VITE_*` are baked in at build time): `VITE_NETWORK=mainnet`, `NOD_NETWORK=mainnet`, `NOD_DEMO_AGENT_KEY` (generate per `docs/DEPLOY.md`), `NOD_DEMO_VENDOR` (mainnet address the team controls), `NOD_DEMO_SATS` (~$0.01 at today's price), `VITE_EMBER2026_ADDRESS`, `VITE_SLIDES_URL`. Deploy and run the checks in `docs/DEPLOY.md` (C3).
 7. [ ] **Mainnet end-to-end** on the live URL from a fresh phone + browser: demo button → Nod → receipt OK → item delivered; open the txid on explorer.bch.ninja; keep the txid (B8, C8, checkpoint 3).
 8. [ ] Open a chipnet txid on `chipnet.chaingraph.cash` in a browser (it returned 403 to curl); swap `EXPLORER_TX_URL.chipnet` if it fails.
 9. [ ] Add the MCP server to Claude using the README snippet; ask it to buy one weather report, approve, confirm `nod_payment_status` reports paid; record the clip.
