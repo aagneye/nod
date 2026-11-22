@@ -15,9 +15,6 @@ export interface VerifiedEntry {
   signatureValid?: boolean;
 }
 
-/** Agent name the demo endpoint signs with (see the HTTP contract in docs/STEPS.md). */
-const DEMO_AGENT_NAME = 'Nod demo agent';
-
 function TxRow({ txid }: { txid: string }) {
   return (
     <div className="border border-line bg-soft p-4">
@@ -128,7 +125,9 @@ function DeliveredItem({ txid, signed }: { txid: string; signed: SignedNodReques
 export function ReceiptCard({ txid, entries }: { txid: string; entries: VerifiedEntry[] }) {
   const allOk = entries.length > 0 && entries.every((e) => e.check.ok);
   const single = entries.length === 1 ? entries[0] : undefined;
-  const showDelivery = single !== undefined && single.check.ok && single.signed.req.agentName === DEMO_AGENT_NAME;
+  // Any agent may buy from the demo vendor (e.g. Claude via MCP); the vendor itself decides.
+  // It answers 400 for requests that are not its own, and DeliveredItem then hides itself.
+  const showDelivery = single !== undefined && single.check.ok;
 
   return (
     <Card>
