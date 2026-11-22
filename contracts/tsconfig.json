@@ -1,8 +1,19 @@
 {
-  "extends": "../tsconfig.base.json",
+  // Hardhat 2 loads TypeScript through ts-node's CommonJS hook, so this package is
+  // "type": "commonjs" and does not use the repo's NodeNext/verbatimModuleSyntax base.
   "compilerOptions": {
-    "rootDir": ".",
+    "target": "ES2022",
+    "module": "commonjs",
+    "moduleResolution": "node10",
+    "lib": ["ES2022"],
+    "types": ["node", "mocha"],
+    "strict": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
     "noEmit": true
   },
-  "include": ["src", "test"]
+  // artifacts/**/*.d.ts are the contract types hardhat-viem generates on compile.
+  "include": ["hardhat.config.ts", "scripts/**/*.ts", "test/**/*.ts", "artifacts/**/*.d.ts"]
 }

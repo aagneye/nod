@@ -1,19 +1,27 @@
 {
   "name": "@nod/contracts",
   "version": "0.1.0",
-  "description": "CashScript allowance contract that lets an agent spend a capped amount per period",
-  "type": "module",
+  "description": "Nod Solidity contracts for HSK Chain: NodReceipts (receipt anchor) and NodPolicy (agent spending limits)",
+  "type": "commonjs",
   "scripts": {
-    "compile": "cashc src/allowance.cash --output artifacts/allowance.json",
-    "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "build": "hardhat compile",
+    "test": "hardhat test",
+    "typecheck": "hardhat compile --quiet && tsc --noEmit",
+    "export-abi": "hardhat run scripts/export-abi.ts",
+    "deploy:hsk-testnet": "hardhat run scripts/deploy.ts --network hskTestnet",
+    "deploy:hsk-mainnet": "hardhat run scripts/deploy.ts --network hskMainnet",
+    "deploy:sepolia": "hardhat run scripts/deploy.ts --network sepolia",
+    "clean": "hardhat clean"
   },
   "dependencies": {
     "@bitauth/libauth": "^3.0.0",
+    "@openzeppelin/contracts": "^5.6.1",
     "cashscript": "^0.14.0"
   },
   "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox-viem": "^3.0.0",
     "cashc": "^0.14.0",
+    "hardhat": "^2.29.2",
     "typescript": "^5.9.3",
     "vitest": "^5.1.1"
   },

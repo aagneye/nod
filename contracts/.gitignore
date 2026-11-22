@@ -1,0 +1,13 @@
+# Hardhat build output (abi/ is generated too, but committed for other packages)
+cache/
+artifacts/
+typechain-types/
+coverage/
+coverage.json
+
+# Deploy dry-runs on the in-process network (live deployments/<network>.json are committed)
+deployments/hardhat.json
+deployments/localhost.json
+
+# Secrets
+.env

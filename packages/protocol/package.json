@@ -1,7 +1,7 @@
 {
   "name": "@nod/protocol",
   "version": "0.1.0",
-  "description": "Nod Request format, Electrum client, transaction builder and receipt checks for Bitcoin Cash",
+  "description": "Nod v2 on HSK Chain: EIP-712 signed terms and links, HSP Agentic Payment helpers, settlement checks and contract ABIs",
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
@@ -15,6 +15,7 @@
   "dependencies": {
     "@bitauth/libauth": "^3.0.0",
     "@electrum-cash/network": "^4.4.8",
+    "viem": "^2.58.4",
     "zod": "^4.6.7"
   },
   "devDependencies": {
