@@ -1,16 +1,25 @@
-import { Component, lazy, Suspense, type ReactNode } from 'react';
-import { BrowserRouter, Link, Route, Routes } from 'react-router-dom';
+import { Component, lazy, Suspense, useEffect, type ReactNode } from 'react';
+import { BrowserRouter, Link, Route, Routes, useLocation } from 'react-router-dom';
 import { Banner } from './components/Banner';
 import { Card, Spinner } from './components/ui';
-import { REPO_URL } from './config';
+import { WalletPicker } from './components/WalletPicker';
+import { REPO_URL, REQUISITION_URL } from './config';
 import { WalletProvider } from './wallet/context';
 import Home from './pages/Home';
 
 // Home stays in the entry chunk; every other route loads on demand.
 const RequestPage = lazy(() => import('./pages/Request'));
 const ReceiptPage = lazy(() => import('./pages/Receipt'));
-const BatchPage = lazy(() => import('./pages/Batch'));
 const HowPage = lazy(() => import('./pages/How'));
+
+/** A new route starts at the top of the page (BrowserRouter keeps the old scroll position). */
+function ScrollToTop() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
+  return null;
+}
 
 function PageFallback() {
   return (
@@ -57,9 +66,13 @@ function NotFound() {
   );
 }
 
+const footerLink =
+  'tracking-[0.14em] text-muted uppercase underline-offset-4 hover:text-ink hover:underline';
+
 export default function App() {
   return (
     <BrowserRouter>
+      <ScrollToTop />
       <WalletProvider>
         <div className="flex min-h-dvh flex-col">
           <Banner />
@@ -69,9 +82,9 @@ export default function App() {
                 <Routes>
                   <Route path="/" element={<Home />} />
                   <Route path="/r" element={<RequestPage />} />
-                  <Route path="/batch" element={<BatchPage />} />
+                  <Route path="/receipt" element={<ReceiptPage />} />
+                  <Route path="/receipt/:flowId" element={<ReceiptPage />} />
                   <Route path="/how" element={<HowPage />} />
-                  <Route path="/tx/:txid" element={<ReceiptPage />} />
                   <Route path="*" element={<NotFound />} />
                 </Routes>
               </Suspense>
@@ -79,30 +92,19 @@ export default function App() {
           </main>
           <footer className="border-t border-line">
             <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 py-6 text-[11px]">
-              <span className="tracking-[0.16em] text-faint uppercase">
-                Nod — built for BCH BLAZE 2026 on Bitcoin Cash
-              </span>
+              <span className="tracking-[0.16em] text-faint uppercase">Nod — agent payments on HSK Chain</span>
               <span className="flex items-center gap-5">
-                <a
-                  href="https://dorahacks.io/build/50833"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="tracking-[0.14em] text-muted uppercase underline-offset-4 hover:text-ink hover:underline"
-                >
+                <a href={REQUISITION_URL} target="_blank" rel="noreferrer" className={footerLink}>
                   Inspired by Requisition ↗
                 </a>
-                <a
-                  href={REPO_URL}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="tracking-[0.14em] text-muted uppercase underline-offset-4 hover:text-ink hover:underline"
-                >
+                <a href={REPO_URL} target="_blank" rel="noreferrer" className={footerLink}>
                   Source ↗
                 </a>
               </span>
             </div>
           </footer>
         </div>
+        <WalletPicker />
       </WalletProvider>
     </BrowserRouter>
   );

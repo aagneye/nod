@@ -1,8 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { fetchDemoAgent, type DemoLink } from '../lib/api';
-import { NETWORK } from '../config';
-import { getChain, getChainStatus, onChainStatus, networkLabel, type ChainStatus } from '../lib/chain';
+import { encodeLink } from '@nod/protocol';
+import { getDemoAgent, type DemoAgentResponse } from '../lib/api';
+import { chainLabel } from '../lib/chains';
+import { friendlyError } from '../lib/errors';
+import { formatUsd } from '../lib/format';
+import { useNodConfig } from '../lib/nodConfig';
+import { requestPathFromLink } from '../lib/receiptLink';
+import { REPO_URL } from '../config';
+import { StatusPanel } from '../components/StatusPanel';
 import { ErrorNote, GhostButton, NetworkBadge, PrimaryButton, Spinner } from '../components/ui';
 
 /** The three promises, as numbered feature columns. */
@@ -12,83 +18,75 @@ const STEPS = [
     icon: '✎',
     iconBg: 'var(--acid)',
     title: 'The agent asks',
-    text: 'Your AI agent signs a purchase request — vendor, amount, purpose, expiry. It holds no funds, only a key.',
+    text: 'Your AI agent signs payment terms with EIP-712: merchant, amount in USD, recipient, purpose, expiry. It holds no funds, only a key.',
   },
   {
     step: '02',
     icon: 'N',
     iconBg: 'var(--accent)',
     title: 'You nod',
-    text: 'Open the link, check every field, approve in your wallet over WizardConnect. One signature, one prompt.',
+    text: 'Open the link, check every field, see the exact token quote from HSP, and sign one authorization in OKX Wallet or MetaMask.',
   },
   {
     step: '03',
     icon: '✓',
     iconBg: 'var(--mint)',
-    title: 'BCH settles',
-    text: 'The vendor is paid directly on Bitcoin Cash. An OP_RETURN memo commits the exact request that was paid.',
+    title: 'HSK Chain settles',
+    text: 'HSP executes the transfer. Nod checks it on chain and anchors the receipt in NodReceipts on HSK Chain; the vendor delivers.',
   },
 ] as const;
 
 /** Black ticker strip: real product facts, orange + separators. */
 const TICKER = [
-  'Agent-signed requests',
-  'WizardConnect approval',
-  // Only claim mainnet when this build really settles there.
-  NETWORK === 'mainnet' ? 'BCH mainnet settlement' : 'Direct BCH settlement',
-  'OP_RETURN memo receipts',
-  'Batch payments',
-  'No seed phrase in the app',
+  'EIP-712 signed terms',
+  'Executed through HSP',
+  'OKX Wallet + MetaMask',
+  'Receipts anchored on HSK Chain',
+  'Spending caps with NodPolicy',
+  'The agent never holds funds',
 ] as const;
 
 const VERIFY_ROWS = [
-  ['Signature valid', 'Schnorr over the request hash'],
-  ['Not expired', 'Every request carries a deadline'],
-  ['Vendor unchanged', 'Payee set at signing, not at payment'],
-  ['Memo commits request', 'OP_RETURN ties tx to request id'],
+  ['Signature valid', 'EIP-712 terms recover to the agent key'],
+  ['Not expired', 'Every set of terms carries a deadline'],
+  ['Not already paid', 'NodReceipts is checked before a new order'],
+  ['Transfer on chain', 'Token, payer, recipient and amount are re-checked'],
 ] as const;
 
-const STATUS_TEXT: Record<ChainStatus, string> = {
-  idle: 'standby',
-  connecting: 'connecting…',
-  live: 'live',
-  error: 'offline',
+type Liveness = 'live' | 'simulated' | 'unreachable' | 'offline' | 'loading';
+
+const LIVENESS_TEXT: Record<Liveness, string> = {
+  live: 'HSP live',
+  simulated: 'Simulation',
+  unreachable: 'HSP unreachable',
+  offline: 'API offline',
+  loading: 'connecting…',
 };
 
+function useLiveness(): Liveness {
+  const { config, error } = useNodConfig();
+  if (config) return config.hsp.mode === 'mock' ? 'simulated' : config.hsp.reachable ? 'live' : 'unreachable';
+  return error ? 'offline' : 'loading';
+}
+
 /**
- * Orange hero stage: the request awaiting a nod, on a dark phone, over the
- * chartreuse sun — with the real chain status and block height underneath.
+ * Orange hero stage: a payment request awaiting a nod, on a dark phone, over the chartreuse sun,
+ * with the live HSP status read from /api/config underneath.
  */
 function StageBlock() {
-  const [status, setStatus] = useState<ChainStatus>(getChainStatus());
-  const [tip, setTip] = useState<number | null>(null);
+  const { config } = useNodConfig();
+  const liveness = useLiveness();
   const [now, setNow] = useState(() => new Date());
-
-  useEffect(() => onChainStatus(setStatus), []);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const c = await getChain();
-        const height = await c.getBlockHeight();
-        if (!cancelled) setTip(height);
-      } catch {
-        /* the status line already reports the failure */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 30_000);
     return () => clearInterval(id);
   }, []);
 
-  const live = status === 'live';
   const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const amount = formatUsd(config?.demoUsd ?? '0.10');
+  const option = config?.hsp.option;
+  const good = liveness === 'live';
 
   return (
     <div className="relative grid min-h-[520px] place-items-center overflow-hidden border-2 border-ink bg-accent px-6 py-16">
@@ -105,30 +103,29 @@ function StageBlock() {
       <span aria-hidden="true" className="absolute size-[300px] rounded-full bg-acid opacity-90 md:size-[340px]" />
 
       <div className="relative z-10 flex flex-col items-center">
-        {/* The phone: one request, ready for a nod. */}
-        <div className="w-[min(310px,82%)] -rotate-3 rounded-[36px] border-[7px] border-[#2b2b24] bg-ink p-5 text-[#f8f5ed] shadow-[16px_18px_0_rgba(23,23,19,0.23)]">
+        {/* The phone: one payment request, ready for a nod. */}
+        <div className="w-[min(310px,82%)] -rotate-3 rounded-[36px] border-[7px] border-[#2b2b24] bg-[#171713] p-5 text-[#f8f5ed] shadow-[16px_18px_0_rgba(23,23,19,0.23)]">
           <div className="flex items-center justify-between text-[10px] font-bold">
             <span>{time}</span>
-            <span className={live ? 'text-acid' : 'text-[#f4714e]'}>
-              {live ? '● LIVE' : `● ${STATUS_TEXT[status].toUpperCase()}`}
+            <span className={good ? 'text-acid' : 'text-[#f4714e]'}>
+              ● {LIVENESS_TEXT[liveness].toUpperCase()}
             </span>
           </div>
 
-          <p className="mt-7 text-[10px] tracking-[0.2em] text-[#a9a89e] uppercase">Purchase request</p>
+          <p className="mt-7 text-[10px] tracking-[0.2em] text-[#a9a89e] uppercase">Payment request</p>
           <p className="mt-1 font-display text-[52px] leading-none">
-            0.00002<span className="ml-2 align-top text-[20px] text-acid">BCH</span>
+            {amount}
+            <span className="ml-2 align-top text-[20px] text-acid">USD</span>
           </p>
 
-          <div className="mt-5 rounded-[14px] bg-[#f8f5ed] p-3.5 text-ink">
+          <div className="mt-5 rounded-[14px] bg-[#f8f5ed] p-3.5 text-[#171713]">
             <div className="flex items-center gap-3">
               <span className="grid size-9 shrink-0 place-items-center rounded-full bg-accent font-display text-sm font-bold text-white italic">
                 N
               </span>
               <span className="min-w-0">
                 <b className="block truncate text-xs">Nod demo agent</b>
-                <small className="mt-0.5 block truncate text-[9px] text-[#666]">
-                  1 live weather report
-                </small>
+                <small className="mt-0.5 block truncate text-[9px] text-[#666]">1 live weather report</small>
               </span>
             </div>
             <span className="mt-2.5 inline-block bg-mint px-2 py-1 text-[8px] font-bold tracking-[0.1em] text-[#14532d] uppercase">
@@ -140,40 +137,45 @@ function StageBlock() {
             <span className="font-display text-[26px] leading-none text-acid">✓</span>
             <b className="mt-2.5 text-[13px]">Ready to nod</b>
             <small className="mt-1.5 text-[9px] tracking-[0.08em] text-[#a9a89e] uppercase">
-              Approve in your wallet
+              Sign once in your wallet
             </small>
           </div>
         </div>
 
-        {/* Real chain readout under the device. */}
+        {/* Live readout under the device. */}
         <p className="mt-7 text-center text-[10px] font-bold tracking-[0.14em] text-ink uppercase">
-          {tip !== null ? `Block ${tip.toLocaleString()}` : '—————'} · {networkLabel()} ·{' '}
-          {STATUS_TEXT[status]}
+          {LIVENESS_TEXT[liveness]}
+          {option ? ` · pays in ${option.coin} on ${chainLabel(option.chainId)}` : ''}
+          {config?.receipts.address ? ` · receipts on ${chainLabel(config.receipts.chainId)}` : ''}
         </p>
         <p className="mt-1.5 text-center text-[9px] font-bold tracking-[0.12em] text-ink/70 uppercase">
-          Signing: WizardConnect · Gas for payer: none · Read live from Fulcrum
+          Signing: EIP-712 in your wallet · Executed by HSP · Read live from /api/config
         </p>
       </div>
     </div>
   );
 }
 
-/** Seconds until `expiresAt`, accepting unix seconds or milliseconds. */
-const expiresInSeconds = (expiresAt: number): number =>
-  (expiresAt > 1e12 ? expiresAt / 1000 : expiresAt) - Date.now() / 1000;
+/** In-app path for the demo agent's link, whatever origin the server put in it. */
+const demoPath = (demo: DemoAgentResponse): string =>
+  requestPathFromLink(demo.link) ?? `/r#${encodeLink(demo.signed)}`;
 
-/** Home: editorial landing — hero, ticker, three moves, verify band, CTA. */
+/** Seconds left on the demo terms. */
+const secondsLeft = (demo: DemoAgentResponse): number => (demo.signed?.terms?.expiry ?? 0) - Date.now() / 1000;
+
+/** Home: editorial landing — hero, ticker, three moves, live status, verify band, CTA. */
 export default function Home() {
   const navigate = useNavigate();
+  const { config } = useNodConfig();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [prefetched, setPrefetched] = useState<DemoLink | null>(null);
+  const [prefetched, setPrefetched] = useState<DemoAgentResponse | null>(null);
 
-  // Prefetch one demo request so the button is instant and any server
-  // warning (e.g. an ephemeral agent key) can be shown before the click.
+  // Prefetch one demo request so the button is instant and any server warning
+  // (e.g. an ephemeral agent key) shows before the click.
   useEffect(() => {
     let cancelled = false;
-    fetchDemoAgent().then(
+    getDemoAgent().then(
       (demo) => {
         if (!cancelled) setPrefetched(demo);
       },
@@ -186,34 +188,16 @@ export default function Home() {
     };
   }, []);
 
-  /** Same-origin links stay in the SPA (keeps the wallet session warm); others do a full load. */
-  const openLink = (link: string) => {
-    try {
-      const url = new URL(link, window.location.href);
-      if (url.origin === window.location.origin) {
-        navigate(`${url.pathname}${url.search}${url.hash}`);
-        return;
-      }
-    } catch {
-      /* fall through */
-    }
-    window.location.href = link;
-  };
-
-  const askAgent = async () => {
+  const tryDemo = async () => {
     setBusy(true);
     setError(null);
     try {
-      // Reuse the prefetched request only while it has plenty of time left.
-      const fresh =
-        prefetched && (prefetched.expiresAt === undefined || expiresInSeconds(prefetched.expiresAt) > 120)
-          ? prefetched
-          : null;
-      const demo = fresh ?? (await fetchDemoAgent());
+      // Reuse the prefetched terms only while they have plenty of time left.
+      const demo = prefetched && secondsLeft(prefetched) > 120 ? prefetched : await getDemoAgent();
       setPrefetched(null);
-      openLink(demo.link);
+      navigate(demoPath(demo));
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(friendlyError(e).text);
     } finally {
       setBusy(false);
     }
@@ -226,6 +210,7 @@ export default function Home() {
   );
 
   const tickerItems = [...TICKER, ...TICKER];
+  const option = config?.hsp.option;
 
   return (
     <div>
@@ -239,11 +224,11 @@ export default function Home() {
             <br />
             You nod.
             <br />
-            <span className="text-accent">BCH settles.</span>
+            <span className="text-accent">HSK Chain settles.</span>
           </h1>
 
           <p className="mt-6 max-w-xl text-lg leading-snug font-semibold text-ink">
-            AI agents can ask to spend BCH. Only your nod, in your own wallet, pays.
+            The approval and settlement layer for AI agent payments on HSK Chain, executed through HSP.
           </p>
 
           {/* The whole product in one glance. */}
@@ -256,17 +241,17 @@ export default function Home() {
             <li aria-hidden="true" className="text-accent">
               →
             </li>
-            <li className="border border-ink bg-mint px-2.5 py-1.5 text-[#14532d]">3 · BCH settles</li>
+            <li className="border border-ink bg-mint px-2.5 py-1.5 text-[#14532d]">3 · HSK Chain settles</li>
           </ol>
 
           <p className="mt-6 max-w-xl text-[0.98rem] leading-relaxed text-muted">
-            The agent signs a request (vendor, amount, purpose, expiry) but holds no money. You check it, approve once
-            in your wallet, and the vendor is paid directly on Bitcoin Cash, with an on-chain receipt proving which
-            request was paid.
+            The agent signs the terms (merchant, amount, recipient, purpose, expiry) but never touches money. You check
+            them, sign one payment authorization in your own wallet, and HSP, the HashKey Settlement Platform, moves the
+            tokens. Nod then anchors a receipt on HSK Chain proving which terms were paid.
           </p>
 
           <div className="mt-8 flex flex-wrap items-center gap-6">
-            <PrimaryButton onClick={() => void askAgent()} disabled={busy} className="max-sm:w-full">
+            <PrimaryButton onClick={() => void tryDemo()} disabled={busy} className="max-sm:w-full">
               {busy ? (
                 <>
                   <Spinner className="size-3.5 border-ink/30 border-t-ink" />
@@ -276,28 +261,30 @@ export default function Home() {
                 tryDemoLabel
               )}
             </PrimaryButton>
-            <GhostButton onClick={() => navigate('/batch?demo=1')}>
-              Pay a batch <span aria-hidden="true">↗</span>
+            <GhostButton onClick={() => navigate('/how')}>
+              How it works <span aria-hidden="true">↗</span>
             </GhostButton>
           </div>
           <p className="mt-3 text-xs text-faint">
-            A demo agent signs a real request for a small{' '}
-            {NETWORK === 'mainnet' ? 'mainnet BCH' : 'chipnet test-coin'} payment (one live weather report). You
-            review it before anything is paid.
+            A demo agent signs real terms for a {formatUsd(config?.demoUsd ?? '0.10')} payment (one live weather
+            report)
+            {option ? `, settled in ${option.coin} on ${chainLabel(option.chainId)}` : ''}. You review everything before
+            anything is paid.
           </p>
           <div className="mt-4">
             <ErrorNote>{error}</ErrorNote>
           </div>
           {prefetched?.warning ? (
-            <p className="mt-3 text-[10px] tracking-[0.08em] text-faint" title="Set NOD_DEMO_AGENT_KEY on the server">
-              Note from the demo agent: {prefetched.warning} (signatures are real, but the agent key changes on
-              server restart).
+            <p className="mt-3 text-[10px] tracking-[0.08em] text-faint">
+              Note from the demo agent: {prefetched.warning}
             </p>
           ) : null}
 
           <p className="mt-8 flex flex-wrap items-center gap-x-2 gap-y-2 text-[10px] font-bold tracking-[0.16em] text-faint uppercase">
-            <NetworkBadge network={NETWORK} />
-            <span className="mx-1 text-accent">/</span> Real wallet signature
+            {option ? <NetworkBadge chainId={option.chainId} /> : null}
+            {option ? <span className="mx-1 text-accent">/</span> : null}
+            Real wallet signature
+            <span className="mx-1 text-accent">/</span> Executed by HSP
           </p>
         </div>
 
@@ -327,7 +314,8 @@ export default function Home() {
             </h2>
           </div>
           <p className="max-w-xs text-sm leading-relaxed text-muted">
-            No custodian, no seed phrase in the browser, no vague “pending”. Every step is verifiable on-chain.
+            No custodian, no keys in the browser, no vague “pending”: every HSP status is shown, and every payment ends
+            with a receipt on HSK Chain.
           </p>
         </div>
 
@@ -347,30 +335,48 @@ export default function Home() {
         </ol>
       </section>
 
+      {/* ── Live status ──────────────────────────────────────── */}
+      <section className="grid gap-10 pb-14 md:grid-cols-[0.8fr_1.2fr] md:gap-16 md:pb-20">
+        <div>
+          <span className="eyebrow">Wired to HSK Chain</span>
+          <h2 className="display mt-5 text-[clamp(2rem,5vw,3.2rem)]">
+            Nothing hidden.
+            <br />
+            Check the wiring.
+          </h2>
+          <p className="mt-6 max-w-md text-sm leading-relaxed text-muted">
+            This panel reads the server's live configuration: whether HSP is reachable, which network and token it pays
+            in, and where Nod's contracts live on HSK Chain. Every address links to the explorer.
+          </p>
+        </div>
+        <StatusPanel />
+      </section>
+
       {/* ── Black verify band ────────────────────────────────── */}
       <section className="band-inverse full-bleed">
         <div className="mx-auto grid max-w-6xl gap-10 px-4 py-14 md:grid-cols-[1fr_1fr] md:gap-16 md:py-20">
           <div>
             <span className="eyebrow text-[#f4f3ea]">Trust the signature</span>
             <h2 className="display mt-5 text-[clamp(2rem,5vw,3.4rem)]">
-              Check the request.
+              Check the terms.
               <br />
               Then move the money.
             </h2>
             <p className="mt-6 max-w-md text-sm leading-relaxed text-[#a8a89c]">
-              A payment link is untrusted input. Nod verifies the agent's Schnorr signature against the request
-              hash before your wallet is ever asked to sign, re-reads the chain to confirm the request is still
-              unpaid, and writes an OP_RETURN memo so the receipt points back at the exact request it settled.
+              A payment link is untrusted input. Nod verifies the agent's EIP-712 signature and the expiry before your
+              wallet is asked for anything, refuses terms that already have a receipt on HSK Chain, and shows HSP's quote
+              (token, amount, recipient) before you sign. After settlement the server re-checks the token transfer on
+              chain before it anchors the receipt.
             </p>
             <div className="mt-8 flex flex-wrap gap-4">
               <Link
-                to="/batch?demo=1"
+                to="/how"
                 className="text-[11px] font-bold tracking-[0.16em] text-acid uppercase underline-offset-4 hover:underline"
               >
-                Approve a batch →
+                See the HSP flow →
               </Link>
               <a
-                href="https://github.com/aagneye/nod"
+                href={REPO_URL}
                 target="_blank"
                 rel="noreferrer"
                 className="text-[11px] font-bold tracking-[0.16em] text-[#a8a89c] uppercase underline-offset-4 hover:text-[#f4f3ea] hover:underline"
@@ -383,7 +389,7 @@ export default function Home() {
           <div className="border border-[#3a3a34] bg-[#1a1a16] p-6 sm:p-8">
             <div className="flex items-center justify-between gap-4">
               <span className="eyebrow text-[#f4f3ea]">Verification</span>
-              <span className="chip">All pass</span>
+              <span className="chip">Every payment</span>
             </div>
             <ul className="mt-6">
               {VERIFY_ROWS.map(([title, detail]) => (
@@ -395,7 +401,7 @@ export default function Home() {
                     <p className="text-sm font-semibold text-[#f4f3ea]">{title}</p>
                     <p className="mt-1 text-xs text-[#8f8f84]">{detail}</p>
                   </div>
-                  <span className="chip shrink-0">Pass</span>
+                  <span className="chip shrink-0">Checked</span>
                 </li>
               ))}
             </ul>
@@ -406,17 +412,12 @@ export default function Home() {
       {/* ── Orange CTA band ──────────────────────────────────── */}
       <section className="band-orange full-bleed">
         {/* Half-cut chartreuse circle, bottom right. */}
-        <span
-          aria-hidden="true"
-          className="absolute -right-16 -bottom-24 size-64 rounded-full bg-acid md:size-80"
-        />
+        <span aria-hidden="true" className="absolute -right-16 -bottom-24 size-64 rounded-full bg-acid md:size-80" />
         <div className="relative mx-auto max-w-6xl px-4 py-16 md:py-24">
           <span className="eyebrow text-[#fff8ef]">Ready when you are</span>
-          <h2 className="display mt-6 max-w-3xl text-[clamp(2.6rem,8vw,5.5rem)] text-[#fff8ef]">
-            Make it a nod.
-          </h2>
+          <h2 className="display mt-6 max-w-3xl text-[clamp(2.6rem,8vw,5.5rem)] text-[#fff8ef]">Make it a nod.</h2>
           <div className="mt-10 flex flex-wrap items-center gap-6">
-            <PrimaryButton onClick={() => void askAgent()} disabled={busy}>
+            <PrimaryButton onClick={() => void tryDemo()} disabled={busy}>
               {busy ? (
                 <>
                   <Spinner className="size-3.5 border-ink/30 border-t-ink" />
@@ -427,10 +428,10 @@ export default function Home() {
               )}
             </PrimaryButton>
             <Link
-              to="/batch?demo=1"
+              to="/how"
               className="text-[11px] font-bold tracking-[0.16em] text-[#fff8ef] uppercase underline-offset-4 hover:underline"
             >
-              Pay a batch instead →
+              How it works →
             </Link>
           </div>
         </div>
