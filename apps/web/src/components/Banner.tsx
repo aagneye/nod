@@ -1,23 +1,12 @@
-import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { EMBER_ADDRESS, NETWORK, REPO_URL, SLIDES_URL } from '../config';
-import { copyText } from '../lib/clipboard';
-import { NetworkBadge } from './ui';
-import { networkLabel, onChainStatus, type ChainStatus } from '../lib/chain';
-import { shortAddress } from '../lib/address';
+import { REPO_URL } from '../config';
+import { useNodConfig } from '../lib/nodConfig';
 import { toggleTheme, useDarkTheme } from '../lib/theme';
+import { CHIP_TONES, NetworkBadge, type BadgeTone } from './ui';
 import { WalletButton } from './WalletButton';
-
-const STATUS: Record<ChainStatus, { cls: string; text: string }> = {
-  idle: { cls: 'chip-plain', text: 'standby' },
-  connecting: { cls: 'chip-warn', text: 'connecting' },
-  live: { cls: 'chip', text: `${networkLabel()} · live` },
-  error: { cls: 'chip-bad', text: 'offline' },
-};
 
 const NAV = [
   { to: '/', label: 'Home' },
-  { to: '/batch', label: 'Batch' },
   { to: '/how', label: 'How it works' },
 ] as const;
 
@@ -44,30 +33,27 @@ function ThemeToggle() {
   );
 }
 
-/**
- * Hackathon-required header: slides, repo and the EMBER2026 address stay on
- * every route; the rest is the product chrome — nav, theme, chain status,
- * wallet.
- */
+/** HSP status pill: live, simulated, unreachable, or the API itself is offline. */
+function useHspPill(): { tone: BadgeTone; text: string } | null {
+  const { config, error, loading } = useNodConfig();
+  if (config) {
+    if (config.hsp.mode === 'mock') return { tone: 'warn', text: 'HSP · simulated' };
+    return config.hsp.reachable ? { tone: 'ok', text: 'HSP · live' } : { tone: 'bad', text: 'HSP · unreachable' };
+  }
+  if (error) return { tone: 'bad', text: 'API offline' };
+  return loading ? { tone: 'neutral', text: 'connecting' } : null;
+}
+
+const navClass = (active: boolean): string =>
+  `text-[11px] font-bold tracking-[0.16em] uppercase transition ${active ? 'text-accent' : 'text-muted hover:text-ink'}`;
+
+/** Sticky header: logo, nav, network, HSP status, theme, wallet; plus the simulation banner when HSP is mocked. */
 export function Banner() {
-  const [copied, setCopied] = useState(false);
-  const [status, setStatus] = useState<ChainStatus>('idle');
   const location = useLocation();
-
-  useEffect(() => onChainStatus(setStatus), []);
-
-  const copyEmber = async () => {
-    if (!EMBER_ADDRESS) return;
-    try {
-      if (!(await copyText(EMBER_ADDRESS))) return;
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      /* clipboard blocked — the address is selectable in the DOM below */
-    }
-  };
-
-  const pill = STATUS[status];
+  const { config } = useNodConfig();
+  const pill = useHspPill();
+  const receiptsChain = config?.receipts?.chainId;
+  const simulated = config?.hsp.mode === 'mock';
 
   return (
     <header className="sticky top-0 z-40 border-b border-line bg-bg/95 backdrop-blur-sm">
@@ -78,109 +64,68 @@ export function Banner() {
         </Link>
 
         <nav className="ml-3 hidden items-center gap-6 md:flex">
-          {NAV.map((item) => {
-            const active = location.pathname === item.to;
-            return (
-              <Link
-                key={item.to}
-                to={item.to}
-                className={`text-[11px] font-bold tracking-[0.16em] uppercase transition ${
-                  active ? 'text-accent' : 'text-muted hover:text-ink'
-                }`}
-              >
-                {item.label}
-              </Link>
-            );
-          })}
-          <a
-            href={SLIDES_URL}
-            target="_blank"
-            rel="noreferrer"
-            className="text-[11px] font-bold tracking-[0.16em] text-muted uppercase transition hover:text-ink"
-          >
-            Slides ↗
-          </a>
-          <a
-            href={REPO_URL}
-            target="_blank"
-            rel="noreferrer"
-            className="text-[11px] font-bold tracking-[0.16em] text-muted uppercase transition hover:text-ink"
-          >
+          {NAV.map((item) => (
+            <Link key={item.to} to={item.to} className={navClass(location.pathname === item.to)}>
+              {item.label}
+            </Link>
+          ))}
+          <a href={REPO_URL} target="_blank" rel="noreferrer" className={navClass(false)}>
             Repo ↗
           </a>
         </nav>
 
         <div className="ml-auto flex items-center gap-2.5">
+          {receiptsChain ? (
+            <span className="hidden sm:inline-flex">
+              <NetworkBadge chainId={receiptsChain} />
+            </span>
+          ) : null}
+          {pill ? <span className={`chip hidden lg:inline-flex ${CHIP_TONES[pill.tone]}`}>{pill.text}</span> : null}
           <ThemeToggle />
-          <span className={`hidden sm:inline-flex ${pill.cls}`}>
-            {pill.text}
-          </span>
           <WalletButton />
         </div>
       </div>
 
-      {/* Submission-gate row: slides, repo, EMBER2026 address. */}
-      <div className="border-t border-line bg-soft/60">
+      {/* Below md the nav moves to its own row. */}
+      <div className="border-t border-line bg-soft/60 md:hidden">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-5 gap-y-1 px-4 py-1.5 text-[10px]">
-          <NetworkBadge network={NETWORK} />
-          <span className="font-bold tracking-[0.18em] text-accent uppercase">Blaze 2026</span>
-          <span className="hidden font-bold tracking-[0.16em] text-faint uppercase sm:inline">
-            Submission
-          </span>
-          {/* The header nav hides below md; the hackathon banner must still link both. */}
-          {NAV.filter((item) => item.to !== '/').map((item) => (
+          {NAV.map((item) => (
             <Link
               key={item.to}
               to={item.to}
-              className={`font-bold tracking-[0.16em] uppercase underline-offset-2 hover:text-ink hover:underline md:hidden ${
-                location.pathname === item.to ? 'text-accent' : 'text-muted'
+              className={`font-bold tracking-[0.16em] uppercase underline-offset-2 hover:underline ${
+                location.pathname === item.to ? 'text-accent' : 'text-muted hover:text-ink'
               }`}
             >
               {item.label}
             </Link>
           ))}
           <a
-            href={SLIDES_URL}
-            target="_blank"
-            rel="noreferrer"
-            className="font-bold tracking-[0.16em] text-muted uppercase underline-offset-2 hover:text-ink hover:underline md:hidden"
-          >
-            Slides ↗
-          </a>
-          <a
             href={REPO_URL}
             target="_blank"
             rel="noreferrer"
-            className="font-bold tracking-[0.16em] text-muted uppercase underline-offset-2 hover:text-ink hover:underline md:hidden"
+            className="font-bold tracking-[0.16em] text-muted uppercase underline-offset-2 hover:text-ink hover:underline"
           >
             Repo ↗
           </a>
-          <div className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-1">
-            {EMBER_ADDRESS ? (
-              <>
-                <span className="font-bold tracking-[0.16em] text-faint uppercase">EMBER2026</span>
-                <code
-                  className="max-w-[40vw] truncate text-[10px] text-muted sm:max-w-[18rem]"
-                  title={EMBER_ADDRESS}
-                >
-                  {shortAddress(EMBER_ADDRESS, 10)}
-                </code>
-                <button
-                  type="button"
-                  onClick={copyEmber}
-                  className="border border-line px-2 py-0.5 text-[9px] font-bold tracking-[0.14em] uppercase transition hover:border-strong hover:text-ink"
-                >
-                  {copied ? 'Copied' : 'Copy'}
-                </button>
-              </>
-            ) : (
-              <span className="font-bold tracking-[0.14em] text-warn uppercase">
-                VITE_EMBER2026_ADDRESS not set
-              </span>
-            )}
-          </div>
+          {receiptsChain ? (
+            <span className="ml-auto inline-flex sm:hidden">
+              <NetworkBadge chainId={receiptsChain} />
+            </span>
+          ) : null}
         </div>
       </div>
+
+      {simulated ? (
+        <div className="border-t border-[#7c4a03]/35 bg-[#fde8c8] text-[#7c4a03]" role="status">
+          <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-3 gap-y-0.5 px-4 py-2 text-[11px]">
+            <b className="tracking-[0.16em] uppercase">Simulation mode — no real payment</b>
+            <span className="text-[#7c4a03]/85">
+              HSP is simulated on this server: no tokens move and nothing is paid.
+            </span>
+          </div>
+        </div>
+      ) : null}
     </header>
   );
 }
