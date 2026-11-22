@@ -1,171 +1,347 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
-import { buildPayment, decodeLink, findPayment, hashRequest } from '@nod/protocol';
-import { RequestCard } from '../components/RequestCard';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { decodeLink, findField, hashTerms, verifyTerms, type TermsVerification } from '@nod/protocol';
+import { QuoteCard } from '../components/QuoteCard';
+import { TermsCard } from '../components/TermsCard';
 import { Badge, Card, ErrorNote, FriendlyErrorNote, PrimaryButton, Spinner } from '../components/ui';
-import { NETWORK } from '../config';
-import { getChain } from '../lib/chain';
-import { saveApproved } from '../lib/approvals';
+import { ApiError, finishPayment, getReceipt, startPayment } from '../lib/api';
+import { chainLabel, HSK_MAINNET_ID, isTestnet } from '../lib/chains';
 import { friendlyError, type FriendlyError } from '../lib/errors';
-import { receiptPath } from '../lib/receiptLink';
+import { savePayer } from '../lib/flowStore';
+import { formatDateTime, shortAddress, shortHash } from '../lib/format';
+import { paymentChainId, useNodConfig } from '../lib/nodConfig';
+import { sameAsk, toQuote, type Quote } from '../lib/quote';
+import { payloadFromHash, receiptPath } from '../lib/receiptLink';
+import { useNowSeconds } from '../lib/useNow';
 import { useWallet } from '../wallet/context';
-import { collectUtxos, signAndBroadcast, walletAddresses } from '../wallet/wizard';
 
-/** Never let the "already paid?" scan hold the Nod button longer than this. */
-const PAID_CHECK_TIMEOUT_MS = 8000;
-/** Vendor history entries to scan; the demo vendor collects many txs and the scan is sequential. */
-const PAID_CHECK_MAX_TXS = 25;
+type Phase =
+  | { name: 'review' }
+  | { name: 'connecting' }
+  | { name: 'quoting'; previous?: Quote }
+  | { name: 'quote'; quote: Quote; notice?: string }
+  | { name: 'signing'; quote: Quote; notice?: string }
+  | { name: 'submitting'; quote: Quote }
+  | { name: 'unavailable'; detail: string };
 
-/** /r#<payload> — the approval page: inspect the agent's request, then Nod. */
+interface PaidInfo {
+  path: string;
+  txHash?: string;
+}
+
+const QUOTE_EXPIRED_NOTICE =
+  'The HSP quote expired before your signature reached it (quotes last about 5 minutes). Here is a fresh one: sign once more.';
+
+const asString = (value: unknown): string | undefined => (typeof value === 'string' && value ? value : undefined);
+
+/** Where an existing receipt lives: its HSP flow when the server knows it, else the anchored receipt. */
+function paidInfo(receipt: unknown, payload: string): PaidInfo {
+  const flowId = asString(findField(receipt, ['flowId']));
+  const paymentRequestId = asString(findField(receipt, ['paymentRequestId']));
+  return {
+    path: receiptPath(flowId, paymentRequestId, payload),
+    txHash: asString(findField(receipt, ['settlementTx', 'txHash'])),
+  };
+}
+
+/** /r#<payload> — the approval page: inspect the agent's terms, get HSP's quote, then nod. */
 export default function RequestPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const wallet = useWallet();
+  const { config } = useNodConfig();
 
-  const payload = location.hash.startsWith('#') ? location.hash.slice(1) : location.hash;
-
+  const payload = payloadFromHash(location.hash);
   const decoded = useMemo(() => {
     try {
-      const result = decodeLink(payload);
-      return { ok: true as const, ...result };
+      return { ok: true as const, signed: decodeLink(payload) };
     } catch (e) {
       return { ok: false as const, message: e instanceof Error ? e.message : String(e) };
     }
   }, [payload]);
 
-  const [paidTxid, setPaidTxid] = useState<string | null>(null);
-  const [checkingPaid, setCheckingPaid] = useState(false);
-  const [paying, setPaying] = useState(false);
+  const [verification, setVerification] = useState<TermsVerification | null>(null);
+  const [paid, setPaid] = useState<PaidInfo | null>(null);
+  const [phase, setPhase] = useState<Phase>({ name: 'review' });
   const [error, setError] = useState<FriendlyError | null>(null);
+  const now = useNowSeconds(decoded.ok);
 
-  const decodable = decoded.ok;
-  const payable = decodable && decoded.valid && !decoded.expired && !paidTxid;
-
-  // Paid check: scan the vendor's recent history for a tx committing this request.
-  useEffect(() => {
-    if (!payable) {
-      setCheckingPaid(false);
-      return;
+  const terms = decoded.ok ? decoded.signed.terms : null;
+  const termsHash = useMemo(() => {
+    if (!terms) return undefined;
+    try {
+      return hashTerms(terms);
+    } catch {
+      return undefined;
     }
+  }, [terms]);
+
+  // Signature and fields, checked in the browser before anything else happens.
+  useEffect(() => {
+    setVerification(null);
+    setPaid(null);
+    setPhase({ name: 'review' });
+    setError(null);
+    if (!decoded.ok) return;
     let cancelled = false;
-    setCheckingPaid(true);
-    // Release the button after a timeout even if the scan is still running;
-    // a late "already paid" result still flips the page to the receipt link.
-    const release = setTimeout(() => {
-      if (!cancelled) setCheckingPaid(false);
-    }, PAID_CHECK_TIMEOUT_MS);
-    (async () => {
-      try {
-        const chain = await getChain();
-        const found = await findPayment(chain, decoded.signed.req, hashRequest(decoded.signed.req), {
-          maxTxs: PAID_CHECK_MAX_TXS,
-        });
-        if (!cancelled && found) setPaidTxid(found.txid);
-      } catch {
-        // Chain unreachable: do not block approval — building the payment
-        // needs the chain anyway and will report its own error.
-      } finally {
-        if (!cancelled) setCheckingPaid(false);
-      }
-    })();
+    void verifyTerms(decoded.signed).then((result) => {
+      if (!cancelled) setVerification(result);
+    });
     return () => {
       cancelled = true;
-      clearTimeout(release);
     };
-  }, [decoded, payable]);
+  }, [decoded]);
 
-  const onNod = async () => {
-    if (!payable || !decodable) return;
-    setError(null);
-    setPaying(true);
-    try {
-      if (wallet.state !== 'connected' || !wallet.manager) {
-        throw new Error('Connect your wallet first — scan the QR with Paytaca or Selene.');
+  // Already paid? A receipt anchored on HSK Chain for these terms says so. Never blocks the page.
+  useEffect(() => {
+    if (!termsHash) return;
+    let cancelled = false;
+    getReceipt(termsHash).then(
+      (lookup) => {
+        if (!cancelled && lookup.anchored) {
+          setPaid({ path: receiptPath(undefined, undefined, payload), txHash: paidInfo(lookup.receipt, payload).txHash });
+        }
+      },
+      () => {
+        /* no API or no contract: /api/pay/start checks again */
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [termsHash, payload]);
+
+  const runStart = useCallback(
+    async (payer: string, notice?: string, previous?: Quote): Promise<Quote | null> => {
+      if (!decoded.ok) return null;
+      setError(null);
+      setPhase({ name: 'quoting', previous });
+      try {
+        const quote = toQuote(await startPayment(decoded.signed, payer));
+        setPhase({ name: 'quote', quote, notice });
+        return quote;
+      } catch (e) {
+        if (e instanceof ApiError && e.code === 'already_paid') {
+          setPaid(paidInfo(e.body?.receipt, payload));
+          setPhase({ name: 'review' });
+          return null;
+        }
+        if (e instanceof ApiError && e.code === 'hsp_unavailable') {
+          setPhase({ name: 'unavailable', detail: e.message });
+          return null;
+        }
+        setError(friendlyError(e, 'start'));
+        setPhase(previous ? { name: 'quote', quote: previous } : { name: 'review' });
+        return null;
       }
-      const manager = wallet.manager;
-      const utxos = await collectUtxos(manager);
-      if (utxos.length === 0) throw new Error('This wallet has no spendable BCH.');
-      const { signed } = decoded;
-      const { change } = walletAddresses(manager);
-      const built = buildPayment({
-        network: NETWORK,
-        payments: [
-          { vendor: signed.req.vendor, amount: signed.req.amount, requestHash: hashRequest(signed.req) },
-        ],
-        utxos,
-        changeAddress: change,
-      });
-      const { txid } = await signAndBroadcast(
-        manager,
-        built,
-        `Nod: pay ${signed.req.purpose} (${signed.req.agentName})`,
-      );
-      saveApproved(txid, [signed]);
-      navigate(receiptPath(txid, [signed]));
+    },
+    [decoded, payload],
+  );
+
+  /** Connect if needed, then ask HSP for a quote for this wallet. */
+  const onNod = async () => {
+    setError(null);
+    setPhase({ name: 'connecting' });
+    let payer: string;
+    try {
+      payer = await wallet.ensureConnected();
     } catch (e) {
-      setError(friendlyError(e));
-    } finally {
-      setPaying(false);
+      setError(friendlyError(e, 'connect'));
+      setPhase({ name: 'review' });
+      return;
+    }
+    await runStart(payer);
+  };
+
+  const onRequote = async (previous: Quote) => {
+    setError(null);
+    let payer: string;
+    try {
+      payer = await wallet.ensureConnected();
+    } catch (e) {
+      setError(friendlyError(e, 'connect'));
+      return;
+    }
+    await runStart(payer, undefined, previous);
+  };
+
+  /** Sign HSP's authorization, hand it to HSP, and follow the payment on the receipt page. */
+  const signAndFinish = async (quote: Quote, retried = false): Promise<void> => {
+    setError(null);
+    setPhase({ name: 'signing', quote, notice: retried ? QUOTE_EXPIRED_NOTICE : undefined });
+    let signature: string;
+    try {
+      signature = await wallet.signTypedData(quote.eip712);
+    } catch (e) {
+      setError(friendlyError(e, 'sign'));
+      setPhase({ name: 'quote', quote });
+      return;
+    }
+    setPhase({ name: 'submitting', quote });
+    try {
+      const res = await finishPayment({
+        flowId: quote.flowId,
+        paymentRequestId: quote.paymentRequestId,
+        signature,
+        opaque: quote.opaque,
+      });
+      const flowId = res.flowId || quote.flowId;
+      if (quote.payer) savePayer(flowId, quote.payer);
+      navigate(receiptPath(flowId, res.paymentRequestId || quote.paymentRequestId, payload));
+    } catch (e) {
+      if (e instanceof ApiError && e.code === 'quote_expired') {
+        // Quotes last about 5 minutes: prepare again and, if nothing changed, ask for the new signature.
+        const fresh = await runStart(quote.payer, QUOTE_EXPIRED_NOTICE, quote);
+        if (fresh && !retried && sameAsk(fresh, quote)) await signAndFinish(fresh, true);
+        return;
+      }
+      setError(friendlyError(e, 'finish'));
+      setPhase({ name: 'quote', quote });
     }
   };
 
-  if (!decodable) {
+  if (!decoded.ok || !terms) {
     return (
       <Card className="mx-auto max-w-2xl">
         <Badge tone="bad" dot>
           Invalid link
         </Badge>
-        <h1 className="display mt-3 text-2xl">This request link is not readable</h1>
+        <h1 className="display mt-3 text-2xl">This payment link is not readable</h1>
         <div className="mt-4">
-          <ErrorNote>{decoded.message}</ErrorNote>
+          <ErrorNote>{decoded.ok ? 'No terms in this link.' : decoded.message}</ErrorNote>
         </div>
         <p className="mt-4 text-sm text-muted">
           Ask the agent for a fresh link, or press “Try the demo” on the{' '}
-          <a href="/" className="text-accent underline-offset-4 hover:underline">
+          <Link to="/" className="text-accent underline-offset-4 hover:underline">
             home page
-          </a>
+          </Link>
           .
         </p>
       </Card>
     );
   }
 
-  const { signed, valid, expired } = decoded;
+  const signatureValid =
+    verification === null ? null : verification.recovered.toLowerCase() === terms.agent.toLowerCase();
+  const expired = now >= terms.expiry;
+  const option = config?.hsp.option;
+  const chainId = paymentChainId(config);
+  const quotePhase =
+    phase.name === 'quote' || phase.name === 'signing' || phase.name === 'submitting'
+      ? phase
+      : phase.name === 'quoting' && phase.previous
+        ? { name: 'quoting' as const, quote: phase.previous }
+        : null;
+
+  const fundsNote =
+    config?.hsp.mode === 'mock'
+      ? 'Simulation mode: HSP is simulated on this server, so nothing is paid.'
+      : option && isTestnet(option.chainId)
+        ? `Test tokens on ${chainLabel(option.chainId)}: they have no value.`
+        : option?.chainId === HSK_MAINNET_ID
+          ? `This moves real ${option.coin} on HSK Chain mainnet.`
+          : option
+            ? `This moves real ${option.coin} on ${chainLabel(option.chainId)}.`
+            : null;
 
   return (
     <div className="mx-auto max-w-2xl">
-      <RequestCard signed={signed} signatureValid={valid} expired={expired} paidTxid={paidTxid} network={NETWORK} />
+      <TermsCard
+        terms={terms}
+        signatureValid={signatureValid}
+        expired={expired}
+        now={now}
+        termsHash={termsHash}
+        paymentChainId={chainId}
+        coin={option?.coin}
+        alreadyPaid={paid !== null}
+      />
 
       <div className="mt-5 space-y-3">
-        {!valid ? (
-          <div>
+        {signatureValid === false ? (
+          <>
             <ErrorNote>
-              Signature invalid — the request was modified after the agent signed it. Do not pay it.
+              Signature invalid: these terms were changed after the agent signed them, or signed by a different key. Do
+              not pay them.
             </ErrorNote>
-          </div>
-        ) : expired ? (
-          <div>
-            <ErrorNote>This request expired at {new Date(signed.req.expiry * 1000).toLocaleString()}.</ErrorNote>
-          </div>
-        ) : paidTxid ? (
+            {verification?.reason ? <p className="font-mono text-[11px] break-words text-faint">{verification.reason}</p> : null}
+          </>
+        ) : paid ? (
           <Card className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm text-accent">This request has already been paid.</p>
-            <PrimaryButton onClick={() => navigate(receiptPath(paidTxid, [signed]))}>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-accent">These terms have already been paid.</p>
+              {paid.txHash ? (
+                <p className="mt-1 font-mono text-[11px] text-faint" title={paid.txHash}>
+                  Settlement {shortHash(paid.txHash)}
+                </p>
+              ) : null}
+            </div>
+            <PrimaryButton onClick={() => navigate(paid.path)}>
               View receipt <span aria-hidden="true">↗</span>
             </PrimaryButton>
           </Card>
+        ) : expired ? (
+          <ErrorNote>These terms expired at {formatDateTime(terms.expiry)}. Ask the agent for a fresh link.</ErrorNote>
+        ) : phase.name === 'unavailable' ? (
+          <Card>
+            <Badge tone="bad" dot>
+              HSP unavailable
+            </Badge>
+            <h3 className="display mt-4 text-2xl">Payments are paused for a moment</h3>
+            <p className="mt-3 text-sm leading-relaxed text-muted">
+              Nod executes every payment through HSP, the HashKey Settlement Platform. The Nod server cannot reach HSP
+              right now, so it cannot prepare a quote. Nothing was signed and nothing was charged.
+            </p>
+            {phase.detail ? <p className="mt-2 font-mono text-[11px] break-words text-faint">{phase.detail}</p> : null}
+            <div className="mt-5">
+              <PrimaryButton onClick={() => void onNod()}>
+                Try again <span aria-hidden="true">↻</span>
+              </PrimaryButton>
+            </div>
+          </Card>
+        ) : quotePhase ? (
+          <>
+            <QuoteCard
+              quote={quotePhase.quote}
+              terms={terms}
+              wallet={wallet.address}
+              now={now}
+              busy={
+                quotePhase.name === 'signing'
+                  ? 'signing'
+                  : quotePhase.name === 'submitting'
+                    ? 'submitting'
+                    : quotePhase.name === 'quoting'
+                      ? 'quoting'
+                      : null
+              }
+              notice={'notice' in quotePhase ? quotePhase.notice : undefined}
+              onSign={() => void signAndFinish(quotePhase.quote)}
+              onRequote={() => void onRequote(quotePhase.quote)}
+              onCancel={() => {
+                setError(null);
+                setPhase({ name: 'review' });
+              }}
+            />
+            <FriendlyErrorNote error={error} />
+          </>
         ) : (
           <>
             <div className="flex flex-wrap items-center gap-3">
               <PrimaryButton
                 onClick={() => void onNod()}
-                disabled={paying || checkingPaid || wallet.state !== 'connected'}
+                disabled={signatureValid !== true || phase.name !== 'review'}
                 className="max-sm:w-full"
               >
-                {paying ? (
+                {phase.name === 'connecting' ? (
                   <span className="flex items-center gap-2">
                     <Spinner className="size-3.5 border-ink/30 border-t-ink" />
-                    Waiting for wallet…
+                    Connecting wallet…
+                  </span>
+                ) : phase.name === 'quoting' ? (
+                  <span className="flex items-center gap-2">
+                    <Spinner className="size-3.5 border-ink/30 border-t-ink" />
+                    Asking HSP for a quote…
                   </span>
                 ) : (
                   <>
@@ -173,18 +349,22 @@ export default function RequestPage() {
                   </>
                 )}
               </PrimaryButton>
-              {checkingPaid ? (
+              {signatureValid === null ? (
                 <span className="flex items-center gap-2 text-sm text-muted">
-                  <Spinner /> checking it is not already paid…
+                  <Spinner /> checking the agent's signature…
                 </span>
-              ) : wallet.state !== 'connected' ? (
-                <span className="text-sm text-muted">Connect your wallet (top right) to approve.</span>
-              ) : null}
+              ) : wallet.address ? (
+                <span className="text-sm text-muted">
+                  Paying from <code className="text-ink">{shortAddress(wallet.address)}</code>
+                </span>
+              ) : (
+                <span className="text-sm text-muted">Your wallet connects first (OKX Wallet, MetaMask…).</span>
+              )}
             </div>
             <FriendlyErrorNote error={error} />
-            <p className="text-xs text-faint">
-              Paying sends {NETWORK === 'mainnet' ? 'real BCH on mainnet' : 'Chipnet test coins'} straight to the
-              vendor — your wallet signs, nothing else holds your money.
+            <p className="text-xs leading-relaxed text-faint">
+              Nod asks HSP for a quote first: you see the exact token amount and recipient before anything is signed. Your
+              wallet signs one authorization; HSP executes the transfer. {fundsNote}
             </p>
           </>
         )}
