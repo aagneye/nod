@@ -95,3 +95,35 @@ To prove a function bundle is self-contained, copy `apps/web/.vercel/output/func
 node --input-type=module -e "import h from './demo-agent.func/index.mjs';import http from 'node:http';http.createServer(h).listen(8787)"
 curl -s localhost:8787/api/demo-agent
 ```
+
+## 6. Deploy from a laptop (what Nod uses)
+
+The live site is **https://nod-bch.vercel.app** (Vercel project `nod-bch`, scope `aagneye-s-team`). It is deployed **prebuilt**: the Build Output folder is built locally and uploaded as-is, so Vercel never runs `npm install` on a lockfile that was generated on Windows (it can miss Linux native bindings for rolldown and tailwind).
+
+```sh
+cd apps/web
+npx vercel@latest login                          # once per machine, approve in the browser
+npx vercel@latest link --yes --project nod-bch   # writes .vercel/project.json (git-ignored)
+NOD_PUBLIC_URL=https://nod-bch.vercel.app npm run build:vercel
+npx vercel@latest deploy --prebuilt --prod --yes
+```
+
+- `VITE_*` variables come from **your shell** at build time (they are baked into the bundle). `NOD_*` variables are read by the functions at **runtime** from the Vercel project's Production environment.
+- Only the production domain `nod-bch.vercel.app` is public. Per-deployment URLs (`nod-<hash>-aagneye-s-team.vercel.app`) sit behind Vercel Authentication, so never share them with judges.
+- After a deploy, run the checks in section 4 against `https://nod-bch.vercel.app`.
+
+### Switching the live site to mainnet
+
+1. Add the runtime variables to the project (Production), then redeploy:
+   ```sh
+   npx vercel@latest env add NOD_NETWORK production        # value: mainnet
+   npx vercel@latest env add NOD_DEMO_VENDOR production    # a bitcoincash: address the team controls
+   npx vercel@latest env add NOD_DEMO_AGENT_KEY production # 64 hex chars, see "Generate the agent key"; mark Sensitive
+   npx vercel@latest env add NOD_DEMO_SATS production      # about $0.01 in sats at today's price
+   ```
+2. Rebuild with the public values in your shell and deploy (PowerShell shown):
+   ```powershell
+   $env:VITE_NETWORK='mainnet'; $env:VITE_EMBER2026_ADDRESS='bitcoincash:z...'; $env:VITE_SLIDES_URL='https://docs.google.com/presentation/d/.../view'; $env:NOD_PUBLIC_URL='https://nod-bch.vercel.app'; npm run build:vercel
+   npx vercel@latest deploy --prebuilt --prod --yes
+   ```
+3. `GET /api/demo-agent` must now return `"network":"mainnet"`, a vendor starting with `bitcoincash:`, and no `warning`.
