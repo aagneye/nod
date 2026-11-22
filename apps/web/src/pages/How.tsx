@@ -1,57 +1,122 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { REPO_URL } from '../config';
-import allowanceSource from '../../../../contracts/src/allowance.cash?raw';
-
-const BLOB = `${REPO_URL}/blob/main`;
+import { REPO_BLOB_URL, REPO_URL } from '../config';
+import nodReceiptsSource from '../../../../contracts/contracts/NodReceipts.sol?raw';
+import nodPolicySource from '../../../../contracts/contracts/NodPolicy.sol?raw';
 
 const STEPS = [
   {
     n: '01',
     title: 'Your agent asks',
-    body: 'The agent builds a Nod Request (vendor, amount, purpose, expiry) and signs it with its own Schnorr key. The whole request rides in a link fragment, so no server ever sees it.',
+    body: 'The agent signs payment terms with EIP-712: merchant, recipient, amount in USD, purpose, expiry. The signed terms ride in a link fragment, so no server has to store them.',
   },
   {
     n: '02',
     title: 'You nod',
-    body: 'You open the link, Nod verifies the signature and checks it has not been paid or expired, and your own wallet asks you to approve over WizardConnect. One tap.',
+    body: 'Nod checks the signature and expiry in your browser, asks HSP for a quote, shows you the exact token amount, and your own wallet signs one payment authorization.',
   },
   {
     n: '03',
-    title: 'BCH settles',
-    body: 'Your wallet pays the vendor directly and the same transaction carries a 40-byte NOD memo committing the request hash. That is the receipt: anyone can check it on-chain.',
+    title: 'HSK Chain settles',
+    body: "HSP's Gateway executes the transfer. Nod checks it on chain and anchors the receipt in NodReceipts on HSK Chain, linking the terms to the settlement for good.",
   },
 ] as const;
 
-const MEMO = [
-  { hex: '6a', label: 'OP_RETURN' },
-  { hex: '03', label: 'push 3' },
-  { hex: '4e4f44', label: '"NOD"' },
-  { hex: '01', label: 'push 1' },
-  { hex: '<kind>', label: '01 single · 02 batch' },
-  { hex: '20', label: 'push 32' },
-  { hex: '<hash>', label: 'sha256 of the request' },
+/** The plain-language version: what happens, from the payer's seat. */
+const WALKTHROUGH = [
+  'An agent you use wants to buy something, say a weather report from another agent. Instead of holding money, it sends you a link with its signed terms.',
+  'You open the link. Nod shows who is asking, how much, for what, who gets paid and when the offer ends, and confirms the agent really signed it and nobody changed a word.',
+  'You press Nod. Your wallet (OKX Wallet, MetaMask or any other) connects, and Nod asks HSP how much of which token that costs. You see the quote before anything else.',
+  'You sign once in your wallet. That signature is a permission slip for this one transfer, not a blank cheque, and it expires in minutes.',
+  'HSP carries out the transfer. Nod shows every step until HSP reports it safe, then checks the transfer on chain itself.',
+  'Nod writes a receipt on HSK Chain saying these terms were paid by that transaction. The selling agent sees it and delivers. Anyone can verify it later.',
 ] as const;
 
-const WALKTHROUGH = [
+/** HSP Agentic Payment, in the order Nod calls it (PROTOCOL §2). */
+const HSP_STEPS = [
   {
-    fn: 'agentSpend(sig agentSig)',
-    who: 'The agent, with no human in the loop',
+    tool: 'create_order',
+    who: 'Nod server',
+    text: 'Turns the signed terms into an HSP cart: merchant, pay_to, the USD amount and an expiry. HSP returns a flow id and a payment request id.',
+  },
+  {
+    tool: 'prepare_payment',
+    who: 'Nod server',
+    text: 'For your wallet address, HSP picks the token amount and returns an EIP-712 authorization to sign. The quote lasts about 5 minutes.',
+  },
+  {
+    tool: 'wallet signature',
+    who: 'You',
+    text: "Your wallet switches to the chain in HSP's EIP-712 domain and signs the authorization exactly as HSP built it (eth_signTypedData_v4). It is not a transaction.",
+  },
+  {
+    tool: 'finalize_payment',
+    who: 'Nod server',
+    text: 'Hands your signature back to HSP with the opaque payload from prepare_payment. HSP wraps it into a payment mandate.',
+  },
+  {
+    tool: 'submit_payment',
+    who: 'Nod server',
+    text: "Submits the mandate unchanged. HSP's Gateway broadcasts the token transfer from your wallet to the merchant.",
+  },
+  {
+    tool: 'query_payment',
+    who: 'Nod server',
+    text: 'The app asks every 3 seconds and the server relays HSP’s answer: submitted, verified, processing, included, then safe or finalized (paid), or failed with a reason.',
+  },
+] as const;
+
+const TERMS_TYPE = `// EIP-712, domain { name: "Nod", version: "2" } (no chainId: terms are network-independent)
+Terms(
+  uint8   v,          // 2
+  bytes16 id,         // random per request
+  string  merchant,   // shown to the payer
+  address payTo,      // who gets paid
+  string  amountUsd,  // "0.10"
+  string  purpose,    // "1 live weather report"
+  uint64  expiry,     // unix seconds
+  address agent       // the key that signed
+)
+termsHash = hashTypedData(domain, Terms, terms)   // bytes32, anchored in NodReceipts`;
+
+const RECEIPT_FUNCTIONS = [
+  {
+    fn: 'anchor(termsHash, settlementTx, chainId, payer, payTo, amount)',
+    who: 'A recorder: the Nod server or the vendor',
     points: [
-      'Must be signed by the agent key baked into the contract.',
-      'this.age >= periodBlocks: the coin must have sat untouched for a full period (a relative timelock, OP_CHECKSEQUENCEVERIFY).',
-      'Output 0 must pay the one approved vendor, and at most capSats.',
-      'Output 1 must send the rest back to this same contract, minus at most 2,000 sats of fee. That fresh coin has age 0, so the clock restarts.',
-      'No other inputs can be mixed in. The only extra output allowed is a zero-value OP_RETURN memo with no tokens, so nothing leaves to an address you did not approve.',
+      'Called after the server has checked the ERC-20 Transfer on the payment network: right token, from the payer, to terms.payTo, at least the amount asked.',
+      'Stores which settlement transaction (and on which chain) paid which terms, plus the block time.',
+      'Receipts are namespaced by recorder (msg.sender): nobody can block or overwrite someone else’s receipt, and each recorder anchors a given termsHash once.',
     ],
   },
   {
-    fn: 'ownerWithdraw(int walletInputIndex)',
-    who: 'You, any time, from your normal wallet',
+    fn: 'receiptOf(recorder, termsHash) · isAnchored(recorder, termsHash)',
+    who: 'Anyone: the vendor, the payer, an auditor',
     points: [
-      'The transaction must also spend one coin from your own P2PKH address. Your wallet signs that coin over WizardConnect; the contract input itself needs no signature.',
-      'Everything goes to your address in a single output, minus at most 5,000 sats of fee.',
-      'No waiting period and no agent cooperation: the kill switch is always live.',
+      'A request counts as paid once a recorder you trust has anchored it.',
+      'Nod checks it before creating a new HSP order, so the same terms are not paid twice.',
+      'anchorBatch records many receipts in one transaction.',
+    ],
+  },
+] as const;
+
+const POLICY_FUNCTIONS = [
+  {
+    fn: 'setPolicy · allowPayee · revoke',
+    who: 'You, the owner, from your own wallet',
+    points: [
+      'Approve NodPolicy for an ERC-20 token; the funds stay in your wallet.',
+      'setPolicy(agent, token, cap, period): the most this agent may spend per period, in that token.',
+      'allowPayee(agent, payee, true) for each recipient the agent may pay. revoke(agent, token) stops it at once; so does removing the token approval.',
+    ],
+  },
+  {
+    fn: 'pay(owner, token, payee, amount, termsHash)',
+    who: 'The agent, with no human in the loop',
+    points: [
+      'Requires an active policy, an allowed payee and spent + amount within the cap for the current period.',
+      'A new period starts once block.timestamp reaches periodStart + period.',
+      'Moves tokens with SafeERC20.safeTransferFrom(owner, payee, amount) and emits PolicyPaid with the termsHash it paid.',
     ],
   },
 ] as const;
@@ -83,24 +148,77 @@ function Ext({ href, children }: { href: string; children: ReactNode }) {
   );
 }
 
+function FunctionCards({
+  items,
+}: {
+  items: ReadonlyArray<{ fn: string; who: string; points: readonly string[] }>;
+}) {
+  return (
+    <div className="grid gap-4 md:grid-cols-2">
+      {items.map((w) => (
+        <div key={w.fn} className="card p-5">
+          <code className="block text-sm font-bold break-words text-ink">{w.fn}</code>
+          <span className="label mt-2 block">{w.who}</span>
+          <ul className="mt-4 space-y-2.5 text-sm">
+            {w.points.map((p) => (
+              <li key={p} className="flex gap-2.5">
+                <span className="mt-[0.55em] inline-block size-1.5 shrink-0 bg-accent" />
+                <span>{p}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Solidity source in the inverse code panel, straight from contracts/ at build time. */
+function SourcePanel({ path, source }: { path: string; source: string }) {
+  return (
+    <div className="band-inverse overflow-hidden">
+      <div className="flex items-center justify-between gap-3 border-b border-white/15 px-4 py-2.5">
+        <span className="min-w-0 truncate text-[10px] font-bold tracking-[0.16em] text-[#f4f3ea]/70 uppercase">{path}</span>
+        <a
+          href={`${REPO_BLOB_URL}/${path}`}
+          target="_blank"
+          rel="noreferrer"
+          className="shrink-0 text-[10px] font-bold tracking-[0.16em] text-acid uppercase hover:underline"
+        >
+          View on GitHub ↗
+        </a>
+      </div>
+      <pre className="max-h-[32rem] overflow-auto p-4 text-[12px] leading-relaxed text-[#f4f3ea]">
+        <code>{source.trim()}</code>
+      </pre>
+    </div>
+  );
+}
+
 export default function HowPage() {
   return (
     <article className="pb-6">
       <header className="py-8 sm:py-12">
         <span className="eyebrow">How it works</span>
         <h1 className="display mt-6 max-w-3xl text-[clamp(2.4rem,8vw,4.4rem)]">
-          Agents ask. People approve. <em className="text-accent">Bitcoin Cash keeps the receipt.</em>
+          Agents ask. People approve. <em className="text-accent">HSK Chain keeps the receipt.</em>
         </h1>
         <p className="mt-6 max-w-2xl text-base leading-relaxed text-muted">
-          Nod is the approval and payment layer for AI agents. The agent never holds your money or your keys; it
-          only signs requests. You approve each one, or a batch, in the wallet you already use, and every payment
-          leaves a verifiable trail on-chain.
+          Nod is the approval and settlement layer for AI agent payments on HSK Chain. The agent never holds your money
+          or your keys; it only signs terms. You approve each payment in the wallet you already use, HSP (the HashKey
+          Settlement Platform) executes it, and every payment ends with a receipt anchored on HSK Chain.
         </p>
       </header>
 
-      <ol className="grid border-[1.5px] border-ink bg-ink sm:grid-cols-3 sm:gap-[1.5px]" style={{ boxShadow: '6px 6px 0 var(--ink)' }}>
+      <ol
+        className="grid border-[1.5px] border-ink bg-ink sm:grid-cols-3 sm:gap-[1.5px]"
+        style={{ boxShadow: '6px 6px 0 var(--ink)' }}
+      >
         {STEPS.map((s, i) => (
-          <li key={s.n} className={`p-6 sm:p-7 ${i === 2 ? 'bg-acid text-[#171713]' : 'bg-panel'} ${i > 0 ? 'border-t-[1.5px] border-ink sm:border-t-0' : ''}`}>
+          <li
+            key={s.n}
+            className={`p-6 sm:p-7 ${i === 2 ? 'bg-acid text-[#171713]' : 'bg-panel'} ${i > 0 ? 'border-t-[1.5px] border-ink sm:border-t-0' : ''}`}
+          >
             <span className={`step-num ${i === 2 ? '!text-[#171713]' : ''}`}>{s.n}</span>
             <h3 className="display mt-4 text-2xl">{s.title}</h3>
             <p className={`mt-3 text-sm leading-relaxed ${i === 2 ? 'text-[#3a3a30]' : 'text-muted'}`}>{s.body}</p>
@@ -110,123 +228,127 @@ export default function HowPage() {
 
       <div className="mt-12" />
 
-      <Section eyebrow="On-chain" title="A 40-byte receipt">
-        <p>
-          Every Nod payment includes one zero-value <code className="text-ink">OP_RETURN</code> output. It commits
-          the hash of the signed request, so a vendor (or anyone) can prove a specific request was paid by scanning
-          the vendor's address history. No contract state, no server, no database.
-        </p>
-        <div className="card overflow-x-auto p-4 sm:p-5">
-          <div className="flex min-w-max gap-2">
-            {MEMO.map((m) => (
-              <div key={m.hex + m.label} className="border border-line bg-bg px-3 py-2">
-                <code className="block text-sm font-bold text-ink">{m.hex}</code>
-                <span className="label mt-1 block !text-[9px]">{m.label}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-        <p>
-          A payment matches a request only when the same transaction has both the exact vendor output and the memo.
-          Over- or under-paying does not count.
-        </p>
+      <Section eyebrow="In plain words" title="What happens when you nod">
+        <ol className="space-y-3">
+          {WALKTHROUGH.map((line, i) => (
+            <li key={line} className="flex gap-4">
+              <span className="step-num shrink-0 pt-0.5">{String(i + 1).padStart(2, '0')}</span>
+              <span>{line}</span>
+            </li>
+          ))}
+        </ol>
       </Section>
 
-      <Section eyebrow="Custody" title="The agent never holds keys">
+      <Section eyebrow="The ask" title="Signed terms">
         <p>
-          The agent's key can sign requests, nothing else. It cannot move a single satoshi of yours: the payment is
-          built and signed by your wallet, after you see the vendor, amount, purpose and the agent's key
-          fingerprint. Change any field and the signature breaks; requests expire, and Nod refuses to pay one twice.
+          Terms are typed data, signed by the agent's key with EIP-712. Change any field and the signature no longer
+          recovers to the agent; let the expiry pass and Nod refuses to pay. The terms hash is what the receipt on HSK
+          Chain points back to.
         </p>
-        <p>
-          A leaked agent key lets someone send you requests you can ignore. A leaked link has a short life and pays
-          a fixed vendor a fixed amount, once.
-        </p>
-      </Section>
-
-      <Section eyebrow="Batch" title="Ten asks, one nod">
-        <p>
-          Agents that queue up many small purchases can be approved together. Nod pays every vendor in a single
-          transaction and writes one batch memo (kind <code className="text-ink">02</code>):
-        </p>
-        <pre className="overflow-x-auto border border-line bg-panel p-4 text-xs text-ink">
-          <code>batchHash = sha256(sort(h1, h2, …, hn) concatenated)</code>
+        <pre className="overflow-x-auto border border-line bg-panel p-4 text-xs leading-relaxed text-ink">
+          <code>{TERMS_TYPE}</code>
         </pre>
         <p>
-          Sorting makes the order irrelevant, up to 50 requests fit, and each one still has its own vendor output, so
-          every request in the batch can be verified individually.
+          A link is <code className="text-ink">/r#&lt;payload&gt;</code>, the base64url JSON of the signed terms. The
+          fragment never reaches a server, and the same link verifies in any browser.
         </p>
       </Section>
 
       <Section
-        eyebrow="BCH scripting"
+        eyebrow="Settlement"
         title={
           <>
-            Allowance <em className="text-accent">covenant</em>
+            Executed through <em className="text-accent">HSP</em>
           </>
         }
       >
         <p>
-          For small recurring spend, approving every call is friction. The allowance is a CashScript covenant: you
-          fund it once, and the agent may pay <strong className="text-ink">one vendor</strong> up to{' '}
-          <strong className="text-ink">a cap per period</strong> without asking. You can pull everything back at any
-          time. The rules live in the coin itself, enforced by every BCH node.
+          Every approved payment runs through HSP Agentic Payment. Nod's server is an MCP client of HSP; it never builds
+          payment JSON, JWTs or hashes itself. HSP's tools do, and your wallet signs what HSP returns, unchanged.
         </p>
-        <p>
-          <span className="chip">Covenant built and tested · 11 tests</span>{' '}
-          <span className="chip-plain chip">Wallet UI on the roadmap</span>
-        </p>
-
-        <div className="grid gap-4 md:grid-cols-2">
-          {WALKTHROUGH.map((w) => (
-            <div key={w.fn} className="card p-5">
-              <code className="block text-sm font-bold break-words text-ink">{w.fn}</code>
-              <span className="label mt-2 block">{w.who}</span>
-              <ul className="mt-4 space-y-2.5 text-sm">
-                {w.points.map((p) => (
-                  <li key={p} className="flex gap-2.5">
-                    <span className="mt-[0.55em] inline-block size-1.5 shrink-0 bg-accent" />
-                    <span>{p}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
+        <ol className="grid gap-px border-[1.5px] border-ink bg-ink sm:grid-cols-2">
+          {HSP_STEPS.map((step, i) => (
+            <li key={step.tool} className={`p-5 ${step.who === 'You' ? 'bg-acid text-[#171713]' : 'bg-panel'}`}>
+              <div className="flex items-center justify-between gap-3">
+                <span className={`step-num ${step.who === 'You' ? '!text-[#171713]' : ''}`}>
+                  {String(i + 1).padStart(2, '0')}
+                </span>
+                <span
+                  className={`text-[9px] font-bold tracking-[0.16em] uppercase ${step.who === 'You' ? 'text-[#3a3a30]' : 'text-faint'}`}
+                >
+                  {step.who}
+                </span>
+              </div>
+              <code className="mt-3 block text-sm font-bold">{step.tool}</code>
+              <p className={`mt-2 text-sm leading-relaxed ${step.who === 'You' ? 'text-[#3a3a30]' : 'text-muted'}`}>
+                {step.text}
+              </p>
+            </li>
           ))}
-        </div>
+        </ol>
+        <p>
+          An expired quote (HSP Gateway code 30043) means a new <code className="text-ink">prepare_payment</code> and a
+          new signature; the app does that for you. HSP only accepts calls from allowlisted IPs, which is why the
+          payment routes run on a server with a fixed address.
+        </p>
+      </Section>
 
-        <div className="band-inverse overflow-hidden">
-          <div className="flex items-center justify-between gap-3 border-b border-white/15 px-4 py-2.5">
-            <span className="text-[10px] font-bold tracking-[0.16em] text-[#f4f3ea]/70 uppercase">
-              contracts/src/allowance.cash
-            </span>
-            <a
-              href={`${BLOB}/contracts/src/allowance.cash`}
-              target="_blank"
-              rel="noreferrer"
-              className="text-[10px] font-bold tracking-[0.16em] text-acid uppercase hover:underline"
-            >
-              View on GitHub ↗
-            </a>
-          </div>
-          <pre className="max-h-[32rem] overflow-auto p-4 text-[12px] leading-relaxed text-[#f4f3ea]">
-            <code>{allowanceSource.trim()}</code>
-          </pre>
-        </div>
+      <Section
+        eyebrow="Receipt"
+        title={
+          <>
+            <em className="text-accent">NodReceipts</em> on HSK Chain
+          </>
+        }
+      >
+        <p>
+          HSP's transfer cannot carry Nod data, so after HSP reports the payment safe, the server checks the token
+          transfer on chain and records <code className="text-ink">termsHash → settlement</code> in NodReceipts. That
+          receipt is what the vendor trusts before it delivers, and what stops the same terms being paid twice.
+        </p>
+        <FunctionCards items={RECEIPT_FUNCTIONS} />
+        <SourcePanel path="contracts/contracts/NodReceipts.sol" source={nodReceiptsSource} />
+      </Section>
+
+      <Section
+        eyebrow="Without a nod"
+        title={
+          <>
+            <em className="text-accent">NodPolicy</em> spending caps
+          </>
+        }
+      >
+        <p>
+          Approving every small call is friction. NodPolicy lets you give an agent a cap per period, in one token, for
+          payees you choose. The agent then pays directly within those limits, and you can revoke it at any time. Funds
+          never leave your wallet until a payment happens.
+        </p>
+        <FunctionCards items={POLICY_FUNCTIONS} />
+        <SourcePanel path="contracts/contracts/NodPolicy.sol" source={nodPolicySource} />
+      </Section>
+
+      <Section eyebrow="Custody" title="The agent never holds keys">
+        <p>
+          The agent's key can sign terms, nothing else. It cannot move your tokens: HSP only executes a transfer your
+          wallet authorized, after you saw the merchant, amount, recipient and HSP's quote. A leaked agent key lets
+          someone send you terms you can ignore; a leaked link pays a fixed recipient a fixed amount, once, before it
+          expires.
+        </p>
       </Section>
 
       <Section eyebrow="Business" title="How it makes money">
         <p>
-          The protocol is free and open. Revenue comes from the hosted layer: a small fee (around 0.5%) on
-          Nod-settled vendor payments with a receipt API, and a paid team inbox for approval policies, allowances
-          and audit export.
+          The protocol is free and open. Revenue comes from the hosted layer: a small fee on Nod-settled payments with a
+          receipt API for vendors, and a paid team console for spending policies, approvals and audit export.
         </p>
       </Section>
 
       <Section eyebrow="Verify it yourself" title="Read the source">
         <div className="flex flex-wrap gap-x-7 gap-y-3">
           <Ext href={REPO_URL}>GitHub repo</Ext>
-          <Ext href={`${BLOB}/docs/PROTOCOL.md`}>PROTOCOL.md</Ext>
-          <Ext href={`${BLOB}/contracts/test/allowance.test.ts`}>Contract tests</Ext>
+          <Ext href={`${REPO_BLOB_URL}/docs/PROTOCOL.md`}>PROTOCOL.md</Ext>
+          <Ext href={`${REPO_BLOB_URL}/contracts/test/NodReceipts.test.ts`}>NodReceipts tests</Ext>
+          <Ext href={`${REPO_BLOB_URL}/contracts/test/NodPolicy.test.ts`}>NodPolicy tests</Ext>
         </div>
         <p className="pt-2">
           <Link to="/" className="btn-cta">
