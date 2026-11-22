@@ -1,47 +1,48 @@
 /**
  * nod-agent CLI.
- *   nod-agent key
- *   nod-agent request --vendor <addr> --sats <n> --purpose "<text>" [--expiry 1h] [--name <agent>] [--app-url <url>] [--json]
- *   nod-agent status <id|hash> [--json]
+ *   nod-agent key [--json]
+ *   nod-agent request --pay-to <0x…> --usd <amount> --purpose "<text>" [--merchant "<name>"] [--expires 1h] [--app-url <url>] [--json]
+ *   nod-agent status <termsHash|id> [--json]
  *   nod-agent list [--json]
  */
 import { parseArgs } from 'node:util';
-import { nodNetwork } from './config.js';
+import type { Env } from './config.js';
 import { checkStatus, createPaymentRequest, listRequests, parseDuration } from './core.js';
-import { agentAddress, loadAgentKey } from './keys.js';
+import { loadAgentKey } from './keys.js';
 
 export interface Io {
   out: (line: string) => void;
   err: (line: string) => void;
 }
 
-const USAGE = `Nod agent tool: your agent asks, you nod, BCH settles.
+const USAGE = `Nod agent tool: your agent asks, you nod, HSK Chain settles.
 
 Usage:
-  nod-agent key                                   Show the agent public key (creates one on first use)
-  nod-agent request --vendor <cashaddr> --sats <n> --purpose "<text>"
-                    [--expiry 1h] [--name "<agent name>"] [--app-url <url>] [--buyer <cashaddr>] [--json]
-                                                  Sign a payment request and print the approval link
-  nod-agent status <id|hash> [--json]             Check on chain whether a request was paid
-  nod-agent list [--json]                         List requests created by this agent
+  nod-agent key [--json]                           Show the agent address (creates a key on first use)
+  nod-agent request --pay-to <0x address> --usd <amount> --purpose "<text>"
+                    [--merchant "<name>"] [--expires 1h] [--app-url <url>] [--json]
+                                                   Sign payment terms and print the approval link
+  nod-agent status <termsHash|id> [--json]         Ask the Nod server whether the terms were paid
+  nod-agent list [--json]                          List the terms this agent created
+
+The approver opens the link, connects a wallet and signs one HSP payment authorization;
+HSP settles the stablecoin transfer and the Nod server anchors the receipt on HSK Chain.
 
 Environment:
-  NOD_NETWORK     chipnet (default) | mainnet
-  NOD_BASE_URL    approval app URL (default http://localhost:5173)
-  NOD_AGENT_KEY   64-hex agent key (default: ~/.nod/agent.key, created on first use)
-  NOD_HOME        directory for agent.key and requests.json (default ~/.nod)
-  NOD_AGENT_NAME  label shown to the approver (default "Nod agent")`;
+  NOD_BASE_URL    Nod app for links and status checks (default http://localhost:5173)
+  NOD_AGENT_KEY   agent private key, 64 hex (default: ~/.nod/agent.key, created on first use)
+  NOD_HOME        directory for agent.key and terms.json (default ~/.nod)
+  NOD_AGENT_NAME  merchant name shown to the payer when --merchant is not given (default "Nod agent")`;
 
 const OPTIONS = {
-  vendor: { type: 'string' },
-  sats: { type: 'string' },
+  'pay-to': { type: 'string' },
+  usd: { type: 'string' },
   purpose: { type: 'string' },
-  expiry: { type: 'string' },
+  merchant: { type: 'string' },
   expires: { type: 'string' },
-  name: { type: 'string' },
+  expiry: { type: 'string' },
   'app-url': { type: 'string' },
   'base-url': { type: 'string' },
-  buyer: { type: 'string' },
   json: { type: 'boolean' },
   help: { type: 'boolean', short: 'h' },
 } as const;
@@ -58,11 +59,7 @@ const defaultIo: Io = {
 
 const message = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
-export const runCli = async (
-  argv: string[],
-  io: Io = defaultIo,
-  env: NodeJS.ProcessEnv = process.env,
-): Promise<number> => {
+export const runCli = async (argv: string[], io: Io = defaultIo, env: Env = process.env, fetchImpl?: typeof fetch): Promise<number> => {
   let parsed: ReturnType<typeof parseCliArgs>;
   try {
     parsed = parseCliArgs(argv);
@@ -80,77 +77,70 @@ export const runCli = async (
     switch (command) {
       case 'key': {
         const key = loadAgentKey(env);
-        const network = nodNetwork(env);
-        const info = {
-          publicKey: key.publicKey,
-          address: agentAddress(key.publicKey, network),
-          network,
-          source: key.source,
-          ...(key.path ? { path: key.path } : {}),
-        };
+        const info = { address: key.address, source: key.source, ...(key.path ? { path: key.path } : {}) };
         if (values.json) {
           io.out(JSON.stringify(info, null, 2));
         } else {
           if (key.source === 'created') io.out(`Created a new agent key at ${key.path}`);
-          io.out(`Agent public key: ${info.publicKey}`);
-          io.out(`Agent address:    ${info.address} (identity only; the agent never holds funds)`);
-          io.out(`Network:          ${network}`);
-          io.out(`Key source:       ${key.source === 'env' ? 'NOD_AGENT_KEY' : key.path}`);
+          io.out(`Agent address: ${key.address}`);
+          io.out(`Key source:    ${key.source === 'env' ? 'NOD_AGENT_KEY' : key.path}`);
+          io.out('The agent key only signs payment terms; it never holds funds.');
         }
         return 0;
       }
       case 'request': {
-        if (!values.vendor || !values.sats || !values.purpose) {
-          throw new Error('request needs --vendor, --sats and --purpose');
-        }
-        if (!/^\d+$/.test(values.sats)) throw new Error('--sats must be a whole number of satoshis');
-        const expiry = values.expiry ?? values.expires;
+        const payTo = values['pay-to'];
+        if (!payTo || !values.usd || !values.purpose) throw new Error('request needs --pay-to, --usd and --purpose');
+        const expires = values.expires ?? values.expiry;
         const baseUrl = values['app-url'] ?? values['base-url'];
-        const record = createPaymentRequest({
-          vendor: values.vendor,
-          sats: Number(values.sats),
+        const record = await createPaymentRequest({
+          payTo,
+          amountUsd: values.usd,
           purpose: values.purpose,
-          ...(expiry ? { expiresIn: parseDuration(expiry) } : {}),
-          ...(values.name ? { agentName: values.name } : {}),
+          ...(values.merchant ? { merchant: values.merchant } : {}),
+          ...(expires ? { expiresIn: parseDuration(expires) } : {}),
           ...(baseUrl ? { baseUrl } : {}),
-          ...(values.buyer ? { buyer: values.buyer } : {}),
           env,
         });
-        const req = record.signed.req;
+        const t = record.signed.terms;
         if (values.json) {
           io.out(
             JSON.stringify(
-              { id: record.id, hash: record.hash, link: record.link, network: record.network, expiry: req.expiry },
+              { id: record.id, termsHash: record.termsHash, link: record.link, agent: t.agent, payTo: t.payTo, amountUsd: t.amountUsd, expiry: t.expiry },
               null,
               2,
             ),
           );
         } else {
-          const sats = 'sats' in req.amount ? req.amount.sats : '?';
-          io.out(`Request ${record.id} signed (${record.network}).`);
-          io.out(`  ${sats} sats to ${req.vendor}`);
-          io.out(`  for: ${req.purpose}`);
-          io.out(`  expires: ${new Date(req.expiry * 1000).toISOString()}`);
+          io.out(`Terms ${record.id} signed by agent ${t.agent}.`);
+          io.out(`  ${t.amountUsd} USD to ${t.payTo}`);
+          io.out(`  from: ${t.merchant}`);
+          io.out(`  for: ${t.purpose}`);
+          io.out(`  expires: ${new Date(t.expiry * 1000).toISOString()}`);
+          io.out(`  termsHash: ${record.termsHash}`);
           io.out('');
-          io.out('Send this link to the person who approves (one tap in their wallet):');
+          io.out('Send this link to the person who approves (they nod in their own wallet):');
           io.out(record.link);
           io.out('');
-          io.out(`Check later with: nod-agent status ${record.id.slice(0, 8)}`);
+          io.out(`Check later with: nod-agent status ${record.termsHash.slice(0, 10)}`);
         }
         return 0;
       }
       case 'status': {
         const target = rest[0];
-        if (!target) throw new Error('status needs a request id or hash');
-        const s = await checkStatus(target, { env });
+        if (!target) throw new Error('status needs a termsHash or id');
+        const s = await checkStatus(target, { env, ...(fetchImpl ? { fetch: fetchImpl } : {}) });
         if (values.json) {
           io.out(JSON.stringify(s, null, 2));
         } else {
-          io.out(`Request ${s.id} (${s.network}): ${s.status.toUpperCase()}`);
-          if (s.txid) io.out(`  txid: ${s.txid}`);
-          if (s.explorerUrl) io.out(`  explorer: ${s.explorerUrl}`);
-          if (s.reasons) io.out(`  receipt problems: ${s.reasons.join(', ')}`);
-          if (s.status !== 'paid') io.out(`  approval link: ${s.link}`);
+          io.out(`Terms ${s.termsHash}: ${s.status.toUpperCase()}`);
+          if (s.receipt) {
+            io.out(`  settlement tx: ${s.receipt.settlementTx} (chain ${s.receipt.chainId})`);
+            io.out(`  paid by ${s.receipt.payer} to ${s.receipt.payTo}, ${s.receipt.amount} token units`);
+          }
+          if (s.settlementUrl) io.out(`  explorer: ${s.settlementUrl}`);
+          if (s.note) io.out(`  note: ${s.note}`);
+          if (s.status !== 'paid' && s.link) io.out(`  approval link: ${s.link}`);
         }
         return s.status === 'paid' ? 0 : 1;
       }
@@ -159,13 +149,11 @@ export const runCli = async (
         if (values.json) {
           io.out(JSON.stringify(items, null, 2));
         } else if (items.length === 0) {
-          io.out('No requests yet. Create one with: nod-agent request --vendor ... --sats ... --purpose ...');
+          io.out('No terms yet. Create some with: nod-agent request --pay-to 0x... --usd 0.10 --purpose "..."');
         } else {
           for (const r of items) {
-            const state = r.paidTxid ? `paid ${r.paidTxid.slice(0, 12)}...` : r.expired ? 'expired' : 'open';
-            io.out(
-              `${r.id.slice(0, 8)}  ${String(r.sats ?? '?').padStart(8)} sats  ${r.network.padEnd(7)}  ${state.padEnd(20)}  ${r.purpose}`,
-            );
+            const state = r.paid ? `paid ${r.paid.slice(0, 12)}...` : r.expired ? 'expired' : 'open';
+            io.out(`${r.termsHash.slice(0, 10)}  ${r.amountUsd.padStart(9)} USD  ${state.padEnd(20)}  ${r.purpose}`);
           }
         }
         return 0;

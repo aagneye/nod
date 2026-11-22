@@ -1,7 +1,7 @@
 {
   "name": "@nod/agent",
   "version": "0.1.0",
-  "description": "Nod agent tool: CLI and MCP server that let any AI agent ask a human to approve a BCH payment",
+  "description": "Nod agent tool: CLI and MCP server that let any AI agent ask a person to approve a stablecoin payment, settled through HSP with receipts on HSK Chain",
   "type": "module",
   "bin": {
     "nod-agent": "./dist/cli.mjs",
@@ -18,7 +18,8 @@
   },
   "dependencies": {
     "@bitauth/libauth": "^3.0.0",
-    "@nod/protocol": "*"
+    "@nod/protocol": "*",
+    "viem": "^2.58.4"
   },
   "devDependencies": {
     "typescript": "^5.9.3",

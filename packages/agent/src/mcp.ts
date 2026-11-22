@@ -2,11 +2,11 @@
  * Minimal Model Context Protocol server (JSON-RPC 2.0, newline-delimited over stdio).
  * Hand-written so the package has no SDK dependency. Logs go to stderr only.
  */
-import { MAX_PURPOSE_LENGTH } from '@nod/protocol';
-import { nodNetwork } from './config.js';
+import { MAX_MERCHANT_LENGTH, MAX_PURPOSE_LENGTH } from '@nod/protocol';
+import type { Env } from './config.js';
 import { checkStatus, createPaymentRequest, listRequests, parseDuration, type StatusOptions } from './core.js';
 
-export const SERVER_INFO = { name: 'nod', version: '0.1.0' };
+export const SERVER_INFO = { name: 'nod', version: '0.2.0' };
 export const DEFAULT_PROTOCOL_VERSION = '2024-11-05';
 /** Versions whose tool features match ours; anything else gets the default. */
 const SUPPORTED_VERSIONS = ['2024-11-05', '2025-03-26', '2025-06-18'];
@@ -15,45 +15,48 @@ export const TOOLS = [
   {
     name: 'nod_request_payment',
     description:
-      'Ask a human to approve a Bitcoin Cash payment to a vendor. Signs a Nod request with the agent key ' +
-      '(the agent never holds funds) and returns an approval link. Show the link to the user; they approve ' +
-      'with one tap in their own wallet and the payment goes straight to the vendor with an on-chain receipt. ' +
-      'Afterwards call nod_payment_status with the returned id.',
+      'Ask a person to approve a stablecoin payment. Signs Nod payment terms (recipient, USD amount, purpose, ' +
+      'expiry) with the agent key (the agent never holds funds) and returns an approval link plus the termsHash. ' +
+      'Show the link to the user: they connect their own wallet and sign one HSP payment authorization; HSP ' +
+      'settles the transfer and the receipt is anchored on HSK Chain. Afterwards call nod_payment_status with the termsHash.',
     inputSchema: {
       type: 'object',
       properties: {
-        vendor: {
-          type: 'string',
-          description: 'Vendor cashaddr: bchtest:... on chipnet (default) or bitcoincash:... on mainnet',
-        },
-        sats: { type: 'integer', minimum: 546, description: 'Amount in satoshis (min 546, the dust limit)' },
+        payTo: { type: 'string', description: 'Recipient 0x address (EVM), e.g. the vendor being paid' },
+        amountUsd: { type: 'string', description: 'Amount in USD with at most 2 decimals, e.g. "0.10" (max 10000)' },
         purpose: {
           type: 'string',
           maxLength: MAX_PURPOSE_LENGTH,
           description: 'Short reason shown to the approver, e.g. "1 weather API call"',
         },
-        expires_in: { type: 'string', description: 'How long the request stays valid: 30m, 1h (default), 2d' },
-        agent_name: { type: 'string', description: 'Label shown to the approver (default from NOD_AGENT_NAME)' },
+        merchant: {
+          type: 'string',
+          maxLength: MAX_MERCHANT_LENGTH,
+          description: 'Name shown to the approver as the one asking (default from NOD_AGENT_NAME)',
+        },
+        expiresIn: { type: 'string', description: 'How long the terms stay valid: 30m, 1h (default), 2d' },
       },
-      required: ['vendor', 'sats', 'purpose'],
+      required: ['payTo', 'amountUsd', 'purpose'],
       additionalProperties: false,
     },
   },
   {
     name: 'nod_payment_status',
     description:
-      'Check on chain whether a Nod request was paid. Returns paid / unpaid / expired, plus the txid and an ' +
-      'explorer link once paid. A valid payment carries an OP_RETURN "NOD" memo committing to the exact signed request.',
+      'Check whether Nod payment terms were paid: asks the Nod server for the receipt it anchored in the ' +
+      'NodReceipts contract on HSK Chain. Returns paid / unpaid / expired, plus the settlement transaction once paid.',
     inputSchema: {
       type: 'object',
-      properties: { id: { type: 'string', description: 'Request id or hash (or a unique prefix of 4+ chars)' } },
-      required: ['id'],
+      properties: {
+        termsHash: { type: 'string', description: 'termsHash returned by nod_request_payment (0x + 64 hex)' },
+        id: { type: 'string', description: 'Terms id, or a unique prefix of 4+ hex chars of the id or termsHash' },
+      },
       additionalProperties: false,
     },
   },
   {
     name: 'nod_list_requests',
-    description: 'List the payment requests this agent created, newest first, with their paid state.',
+    description: 'List the payment terms this agent created, newest first, with their paid state.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   },
 ];
@@ -68,8 +71,8 @@ export interface RpcMessage {
 }
 
 export interface McpContext {
-  env?: NodeJS.ProcessEnv;
-  /** Passed to checkStatus (tests inject a fake chain). */
+  env?: Env;
+  /** Passed to checkStatus (tests inject fetch). */
   status?: Omit<StatusOptions, 'env'>;
 }
 
@@ -87,45 +90,49 @@ const callTool = async (name: string, args: Record<string, unknown>, ctx: McpCon
   const env = ctx.env ?? process.env;
   switch (name) {
     case 'nod_request_payment': {
-      const sats = typeof args.sats === 'string' && /^\d+$/.test(args.sats) ? Number(args.sats) : args.sats;
-      if (typeof sats !== 'number') throw new Error('"sats" must be an integer');
-      const record = createPaymentRequest({
-        vendor: str(args.vendor, 'vendor'),
-        sats,
+      const amountUsd = typeof args.amountUsd === 'number' ? args.amountUsd : str(args.amountUsd, 'amountUsd');
+      const record = await createPaymentRequest({
+        payTo: str(args.payTo, 'payTo'),
+        amountUsd,
         purpose: str(args.purpose, 'purpose'),
-        ...(args.expires_in !== undefined ? { expiresIn: parseDuration(str(args.expires_in, 'expires_in')) } : {}),
-        ...(args.agent_name !== undefined ? { agentName: str(args.agent_name, 'agent_name') } : {}),
+        ...(args.merchant !== undefined ? { merchant: str(args.merchant, 'merchant') } : {}),
+        ...(args.expiresIn !== undefined ? { expiresIn: parseDuration(str(args.expiresIn, 'expiresIn')) } : {}),
         env,
       });
-      const req = record.signed.req;
+      const t = record.signed.terms;
       const details = {
+        termsHash: record.termsHash,
         id: record.id,
-        hash: record.hash,
-        network: record.network,
         link: record.link,
-        vendor: req.vendor,
-        amount: req.amount,
-        purpose: req.purpose,
-        expiresAt: new Date(req.expiry * 1000).toISOString(),
+        merchant: t.merchant,
+        payTo: t.payTo,
+        amountUsd: t.amountUsd,
+        purpose: t.purpose,
+        agent: t.agent,
+        expiresAt: new Date(t.expiry * 1000).toISOString(),
       };
       return textResult(
-        `Payment request signed. Ask the user to open this link and approve it in their wallet:\n${record.link}\n\n` +
+        `Payment terms signed. Ask the user to open this link and approve the payment in their wallet:\n${record.link}\n\n` +
           JSON.stringify(details, null, 2),
       );
     }
     case 'nod_payment_status': {
-      const s = await checkStatus(str(args.id, 'id'), { ...ctx.status, env });
+      const target = args.termsHash !== undefined ? str(args.termsHash, 'termsHash') : args.id !== undefined ? str(args.id, 'id') : undefined;
+      if (!target) throw new Error('Pass "termsHash" (or "id")');
+      const s = await checkStatus(target, { ...ctx.status, env });
       const head =
         s.status === 'paid'
-          ? `PAID on ${s.network}: ${s.explorerUrl}`
+          ? `PAID${s.settlementUrl ? `: ${s.settlementUrl}` : ''}`
           : s.status === 'expired'
-            ? 'EXPIRED without a payment. Create a new request if it is still needed.'
-            : `UNPAID so far. The user can approve here: ${s.link}`;
+            ? 'EXPIRED without a payment. Create new terms if it is still needed.'
+            : s.status === 'unknown'
+              ? `UNKNOWN: ${s.note ?? 'the Nod server cannot look up receipts'}`
+              : `UNPAID so far.${s.link ? ` The user can approve here: ${s.link}` : ''}`;
       return textResult(`${head}\n\n${JSON.stringify(s, null, 2)}`);
     }
     case 'nod_list_requests': {
       const items = listRequests(env);
-      return textResult(items.length === 0 ? 'No requests yet.' : JSON.stringify(items, null, 2));
+      return textResult(items.length === 0 ? 'No payment terms yet.' : JSON.stringify(items, null, 2));
     }
     default:
       return null;
@@ -149,19 +156,15 @@ export const handleMessage = async (msg: RpcMessage, ctx: McpContext = {}): Prom
       const asked = msg.params?.protocolVersion;
       const protocolVersion =
         typeof asked === 'string' && SUPPORTED_VERSIONS.includes(asked) ? asked : DEFAULT_PROTOCOL_VERSION;
-      let network = 'chipnet';
-      try {
-        network = nodNetwork(ctx.env ?? process.env);
-      } catch {
-        /* reported on the first tool call */
-      }
       return ok({
         protocolVersion,
         capabilities: { tools: { listChanged: false } },
         serverInfo: SERVER_INFO,
         instructions:
-          `Nod lets you pay for things without holding money (network: ${network}). Call nod_request_payment, ` +
-          'show the returned link to the user so they can approve in their own wallet, then call nod_payment_status.',
+          'Nod lets you get paid, or pay for things, without holding money yourself. Call nod_request_payment ' +
+          'with the recipient address, the USD amount and the purpose; show the returned link to the user so they ' +
+          'can approve in their own wallet (HSP settles it, the receipt lands on HSK Chain); then call ' +
+          'nod_payment_status with the termsHash.',
       });
     }
     case 'ping':

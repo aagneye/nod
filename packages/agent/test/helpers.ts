@@ -1,58 +1,51 @@
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import {
-  binToHex,
-  encodeCashAddress,
-  encodeLockingBytecodeP2pkh,
-  hash160,
-  hashTransaction,
-  hexToBin,
-  secp256k1,
-  sha256,
-  utf8ToBin,
-} from '@bitauth/libauth';
-import type { ChainReader } from '@nod/protocol';
+import { getAddress, type Hex } from 'viem';
 
-export const VENDOR = 'bchtest:qr4upmst92u7sfm6vqxz29r4ug4rysdpcytc853pps';
+/** A recipient address for test terms. */
+export const PAY_TO = getAddress('0x24b1ffb060a2e9b70a984add79105f149a61c02a');
+export const SETTLEMENT_TX: Hex = `0x${'ab'.repeat(32)}`;
 
 /** Fresh environment with an empty NOD_HOME in the OS temp dir. */
 export const tempEnv = (extra: Record<string, string> = {}): NodeJS.ProcessEnv => ({
   NOD_HOME: mkdtempSync(join(tmpdir(), 'nod-agent-test-')),
-  NOD_NETWORK: 'chipnet',
   NOD_BASE_URL: 'https://nod.example',
   ...extra,
 });
 
-/** Deterministic chipnet wallet for building fake payments. */
-export const testWallet = (seed: string) => {
-  const privateKey = sha256.hash(utf8ToBin(`nod-agent-test-${seed}`));
-  const publicKey = secp256k1.derivePublicKeyCompressed(privateKey);
-  if (typeof publicKey === 'string') throw new Error(publicKey);
-  const pkh = hash160(publicKey);
-  return {
-    lockingBytecode: encodeLockingBytecodeP2pkh(pkh),
-    address: encodeCashAddress({ prefix: 'bchtest', type: 'p2pkh', payload: pkh }).address,
-  };
+/**
+ * A fake Nod server answering GET /api/receipt: anchored for the termsHashes in `paid`,
+ * not anchored otherwise. Records the URLs it was called with.
+ */
+export const fakeReceiptServer = (opts: { paid?: string[]; contract?: string | null } = {}) => {
+  const urls: string[] = [];
+  const contract = opts.contract === undefined ? '0x5555555555555555555555555555555555555555' : opts.contract;
+  const fetchImpl = (async (input: RequestInfo | URL) => {
+    const url = String(input);
+    urls.push(url);
+    const termsHash = new URL(url).searchParams.get('termsHash') ?? '';
+    const anchored = (opts.paid ?? []).map((h) => h.toLowerCase()).includes(termsHash.toLowerCase());
+    const body = anchored
+      ? {
+          anchored: true,
+          termsHash,
+          chainId: 133,
+          contract,
+          recorder: '0x1111111111111111111111111111111111111111',
+          receipt: {
+            settlementTx: SETTLEMENT_TX,
+            chainId: 11155111,
+            payer: '0x8ba1f109551bD432803012645Ac136ddd64DBA72',
+            payTo: PAY_TO,
+            amount: '100000',
+            anchoredAt: 1_900_000_000,
+            settlementExplorerUrl: `https://sepolia.etherscan.io/tx/${SETTLEMENT_TX}`,
+          },
+          explorer: { settlementTx: `https://sepolia.etherscan.io/tx/${SETTLEMENT_TX}` },
+        }
+      : { anchored: false, termsHash, chainId: 133, contract, recorder: contract ? '0x1111111111111111111111111111111111111111' : null, explorer: {}, ...(contract ? {} : { reason: 'NOD_RECEIPTS_ADDRESS is not set' }) };
+    return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
+  }) as typeof fetch;
+  return { fetch: fetchImpl, urls };
 };
-
-export const fakeTxid = (label: string): string => binToHex(sha256.hash(utf8ToBin(label)));
-
-export class FakeChain implements ChainReader {
-  txs = new Map<string, string>();
-  history: { txid: string; height: number }[] = [];
-  add(txHex: string, height = 0): string {
-    const txid = hashTransaction(hexToBin(txHex));
-    this.txs.set(txid, txHex);
-    this.history.unshift({ txid, height });
-    return txid;
-  }
-  async getHistory() {
-    return this.history;
-  }
-  async getTransactionHex(txid: string) {
-    const hex = this.txs.get(txid);
-    if (!hex) throw new Error('not found');
-    return hex;
-  }
-}
