@@ -1,0 +1,228 @@
+[
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "recorder",
+        "type": "address"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "termsHash",
+        "type": "bytes32"
+      }
+    ],
+    "name": "AlreadyAnchored",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "LengthMismatch",
+    "type": "error"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "recorder",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "bytes32",
+        "name": "termsHash",
+        "type": "bytes32"
+      },
+      {
+        "indexed": false,
+        "internalType": "bytes32",
+        "name": "settlementTx",
+        "type": "bytes32"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "chainId",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "address",
+        "name": "payer",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "address",
+        "name": "payTo",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      }
+    ],
+    "name": "Anchored",
+    "type": "event"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bytes32",
+        "name": "termsHash",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "settlementTx",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "uint256",
+        "name": "chainId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "address",
+        "name": "payer",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "payTo",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      }
+    ],
+    "name": "anchor",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bytes32[]",
+        "name": "termsHashes",
+        "type": "bytes32[]"
+      },
+      {
+        "internalType": "bytes32[]",
+        "name": "settlementTxs",
+        "type": "bytes32[]"
+      },
+      {
+        "internalType": "uint256[]",
+        "name": "chainIds",
+        "type": "uint256[]"
+      },
+      {
+        "internalType": "address[]",
+        "name": "payers",
+        "type": "address[]"
+      },
+      {
+        "internalType": "address[]",
+        "name": "payTos",
+        "type": "address[]"
+      },
+      {
+        "internalType": "uint256[]",
+        "name": "amounts",
+        "type": "uint256[]"
+      }
+    ],
+    "name": "anchorBatch",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "recorder",
+        "type": "address"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "termsHash",
+        "type": "bytes32"
+      }
+    ],
+    "name": "isAnchored",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "recorder",
+        "type": "address"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "termsHash",
+        "type": "bytes32"
+      }
+    ],
+    "name": "receiptOf",
+    "outputs": [
+      {
+        "components": [
+          {
+            "internalType": "bytes32",
+            "name": "settlementTx",
+            "type": "bytes32"
+          },
+          {
+            "internalType": "uint256",
+            "name": "chainId",
+            "type": "uint256"
+          },
+          {
+            "internalType": "address",
+            "name": "payer",
+            "type": "address"
+          },
+          {
+            "internalType": "address",
+            "name": "payTo",
+            "type": "address"
+          },
+          {
+            "internalType": "uint256",
+            "name": "amount",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint64",
+            "name": "anchoredAt",
+            "type": "uint64"
+          }
+        ],
+        "internalType": "struct NodReceipts.Receipt",
+        "name": "",
+        "type": "tuple"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  }
+]
