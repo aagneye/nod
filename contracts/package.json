@@ -14,13 +14,10 @@
     "clean": "hardhat clean"
   },
   "dependencies": {
-    "@bitauth/libauth": "^3.0.0",
-    "@openzeppelin/contracts": "^5.6.1",
-    "cashscript": "^0.14.0"
+    "@openzeppelin/contracts": "^5.6.1"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox-viem": "^3.0.0",
-    "cashc": "^0.14.0",
     "hardhat": "^2.29.2",
     "typescript": "^5.9.3",
     "vitest": "^5.1.1"

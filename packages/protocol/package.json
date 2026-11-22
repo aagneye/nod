@@ -13,8 +13,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@bitauth/libauth": "^3.0.0",
-    "@electrum-cash/network": "^4.4.8",
     "viem": "^2.58.4",
     "zod": "^4.6.7"
   },

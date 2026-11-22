@@ -17,7 +17,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@bitauth/libauth": "^3.0.0",
     "@nod/protocol": "*",
     "viem": "^2.58.4"
   },
