@@ -18,7 +18,7 @@ Nod keeps the keys with the human and makes every payment provably tied to the r
 ## How it works
 
 1. **The agent asks.** It signs a small Nod Request (vendor, amount, purpose, expiry) with its own key, which holds no money, and sends you a link.
-2. **You nod.** The link opens an approval page that checks the signature and expiry and whether it was already paid. You approve with one tap in your own wallet over **WizardConnect** (Paytaca, Cashonize). Several requests can be approved in **one batch**.
+2. **You nod.** The link opens an approval page that checks the signature and expiry and whether it was already paid. You approve with one tap in your own wallet over **WizardConnect** (Paytaca, Selene). Several requests can be approved in **one batch**.
 3. **BCH settles.** One BCH transaction pays the vendor directly and carries an `OP_RETURN "NOD"` memo with the hash of the signed request. Anyone (you, the agent, the vendor) can check on-chain that *this* request was paid, with no server and no database.
 
 Optional: a CashScript **allowance covenant** (`contracts/`) lets an agent spend up to X sats per N blocks to one vendor on its own, and you can cancel it at any time.

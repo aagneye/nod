@@ -21,12 +21,12 @@ Repo: https://github.com/aagneye/nod
 >
 > **How Nod works.**
 > 1. **The agent asks.** It signs a small Nod Request (vendor, amount, purpose, expiry) with a key that holds no money, and hands you a link. Claude and other agents do this through our MCP server; scripts use the `nod-agent` CLI.
-> 2. **You nod.** The link opens an approval page that checks the signature, the expiry and whether it was already paid. You approve with one tap in your own wallet over WizardConnect (Paytaca, Cashonize). Several requests can be approved in one batch.
+> 2. **You nod.** The link opens an approval page that checks the signature, the expiry and whether it was already paid. You approve with one tap in your own wallet over WizardConnect (Paytaca, Selene). Several requests can be approved in one batch.
 > 3. **BCH settles.** One mainnet transaction pays the vendor directly and carries an `OP_RETURN "NOD"` memo with the hash of the signed request. The agent, the vendor and you can each prove on-chain that this exact request was paid, with no server or database. Our demo vendor checks that receipt and then delivers the item.
 >
 > **Bitcoin Cash features used:** fast, cheap mainnet payments; OP_RETURN memos as receipts; Schnorr signatures (libauth); batch payments with many outputs in one transaction; CashTokens amounts in the protocol (PUSD-ready); public Fulcrum/Electrum servers; WizardConnect wallet connection; and an optional CashScript allowance covenant ("up to X sats per N blocks to this vendor, cancel any time").
 >
-> **Try it:** https://nod-bch.vercel.app, then click "Try the demo" and approve about $0.01 with Paytaca or Cashonize. Example mainnet payment: `<MAINNET_TXID>`.
+> **Try it:** https://nod-bch.vercel.app, then click "Try the demo" and approve about $0.01 with Paytaca or Selene. Example mainnet payment: `<MAINNET_TXID>`.
 >
 > **Open protocol:** the request format, hashing, link encoding and memo are specified in `docs/PROTOCOL.md`, so any wallet, agent framework or vendor can implement Nod.
 >
@@ -62,7 +62,7 @@ Copy the Widget Factory template, keep its layout, and paste one block per slide
 
 **4. How it works**
 - 1. The agent asks: a signed Nod Request (vendor, amount, purpose, expiry) as a link.
-- 2. You nod: the approval page checks signature, expiry and replay; you approve in Paytaca or Cashonize via WizardConnect.
+- 2. You nod: the approval page checks signature, expiry and replay; you approve in Paytaca or Selene via WizardConnect.
 - 3. BCH settles: the vendor is paid directly, and an `OP_RETURN "NOD" <request hash>` memo is the receipt.
 - The vendor checks the receipt and delivers. Batch: many requests, one approval, one transaction.
 
@@ -130,7 +130,7 @@ Inspired by Requisition. $BCH #BitcoinCash #AIagents
 
 > Hi all, Nod is real and live for BCH BLAZE 2026 (Mainnet track).
 >
-> **Nod: your agent asks. You nod. BCH settles.** AI agents sign payment requests, you approve with one tap in your own wallet (WizardConnect: Paytaca or Cashonize), and the BCH payment carries an OP_RETURN receipt tied to the exact request. It works with Claude via MCP.
+> **Nod: your agent asks. You nod. BCH settles.** AI agents sign payment requests, you approve with one tap in your own wallet (WizardConnect: Paytaca or Selene), and the BCH payment carries an OP_RETURN receipt tied to the exact request. It works with Claude via MCP.
 >
 > Live: https://nod-bch.vercel.app (click "Try the demo", about $0.01)
 > Repo: https://github.com/aagneye/nod

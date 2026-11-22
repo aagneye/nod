@@ -114,7 +114,7 @@ Folder: `apps/web/src/`. Import all protocol logic from `@nod/protocol`.
 - [ ] **B3 · P0 · WizardConnect connect (biggest risk, do early)**
   Files: `apps/web/src/wallet/wizard.ts`, `apps/web/src/components/WalletButton.tsx`, `apps/web/src/main.tsx` (provider)
   Use `@wizardconnect/react`: `useWizardConnect`, `WizardConnectQRDialog`. Read the `@wizardconnect/dapp` types first (especially `sourceOutputs`). Get buyer addresses from `manager.getPubkey(0, 0n)` and derive the cashaddr (`bchtest:` on Chipnet).
-  Done when: on **Chipnet**, Paytaca or Cashonize scans the QR, connects, and the app shows the wallet's address.
+  Done when: on **Chipnet**, Paytaca or Selene scans the QR, connects, and the app shows the wallet's address.
   Status (Nov 20): code done, incl. `wiz://` open-in-wallet deep link for phones (unverified that wallets handle it); open until a real wallet connects on Chipnet.
 
 - [ ] **B4 · P0 · Sign and broadcast on Chipnet**
@@ -303,7 +303,7 @@ verifyReceipt(chain, txid, req, requestHash, { batchHashes? }) -> { ok, reasons[
 
 ### 2. First Chipnet end-to-end (target Nov 20 midday)
 - [ ] CLI (C5) creates a request → link opens on approval page (B5).
-- [ ] Nod → WizardConnect → Paytaca/Cashonize approves → tx broadcast (A7, B4).
+- [ ] Nod → WizardConnect → Paytaca/Selene approves → tx broadcast (A7, B4).
 - [ ] Receipt page shows "request matches payment" (A8, B6).
 - [ ] `nod status` reports paid.
 
@@ -413,7 +413,7 @@ Done when: `npx vitest run packages/agent` passes; `node packages/agent/build.mj
 
 Builders cannot do these. Do them top to bottom; each step depends on the one before.
 
-1. [ ] **Real-wallet Chipnet test (biggest remaining risk).** Open https://nod-bch.vercel.app (live, Chipnet) or run `npm run dev -w @nod/web`; fund a Paytaca or Cashonize chipnet wallet from tbch.googol.cash; connect via WizardConnect QR, demo button → Nod → approve on the phone → receipt shows "request matches payment" and the delivered item. Covers A10, B3, B4, B5 and Integration checkpoint 2. Also try the `wiz://` open-in-wallet link on a phone.
+1. [ ] **Real-wallet Chipnet test (biggest remaining risk).** Open https://nod-bch.vercel.app (live, Chipnet) or run `npm run dev -w @nod/web`; fund a Paytaca or Selene chipnet wallet from tbch.googol.cash; connect via WizardConnect QR, demo button → Nod → approve on the phone → receipt shows "request matches payment" and the delivered item. Covers A10, B3, B4, B5 and Integration checkpoint 2. Also try the `wiz://` open-in-wallet link on a phone.
 2. [x] Run `npm install` at the repo root (registers `packages/agent` in `package-lock.json`), then `npm test`; commit the lockfile.
 3. [ ] Make the GitHub repo public (banner and footer point to `github.com/aagneye/nod`).
 4. [ ] Get the team's **EMBER2026 CashTokens address**.

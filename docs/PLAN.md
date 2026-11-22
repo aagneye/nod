@@ -70,7 +70,7 @@ Judging: 3 judges × 4 areas × 10 points — cool, slick, works/uses BCH well, 
 ### The 30-second judge demo
 1. Home page → **"Ask the agent to buy something"** (demo agent requests a $0.01 item from the demo vendor).
 2. Approval page shows vendor, amount, purpose, expiry, "signature valid".
-3. **Nod** button → WizardConnect QR → approve in Paytaca/Cashonize.
+3. **Nod** button → WizardConnect QR → approve in Paytaca/Selene.
 4. Receipt page: mainnet txid, explorer link, "request matches payment", and the delivered item.
 
 ## Architecture
@@ -97,7 +97,7 @@ Demo vendor API ── verifies the same receipt, releases the item to the agent
 ### Network and protocols
 - **Chain:** Bitcoin Cash mainnet; Chipnet for testing (faucets: tbch.googol.cash, chipnet.bch.ninja).
 - **Money:** BCH; **PUSD** (ParyonUSD, a CashToken — sponsor's stablecoin) as second option.
-- **Wallet link:** WizardConnect (Nostr transport, no project ID). Wallets: Paytaca, Cashonize.
+- **Wallet link:** WizardConnect (Nostr transport, no project ID). Wallets: Paytaca, Selene ([Cauldron wallet docs](https://docs.riftenlabs.com/cauldron/wallets/) list both for WizardConnect; Cashonize is listed only under WalletConnect, checked Nov 22).
 - **Chain data:** Electrum Cash protocol over WSS (public Fulcrum servers), via `@electrum-cash/network`.
 - **Contracts:** CashScript (stretch feature only).
 - **Agent link:** Model Context Protocol (stdio server).
@@ -207,7 +207,7 @@ verifyReceipt(txid, req) -> { ok, reasons[] }
 ## Verification
 
 - `npm test` — protocol unit tests: hash is stable, tampered request fails, expired request rejected, tx outputs match requests, receipt check passes/fails correctly.
-- **Chipnet end-to-end:** create request via CLI → open link → approve in Paytaca/Cashonize → receipt page shows OK.
+- **Chipnet end-to-end:** create request via CLI → open link → approve in Paytaca/Selene → receipt page shows OK.
 - **Mainnet end-to-end** (tiny amounts): same flow; confirm txid on a block explorer; demo vendor releases the item.
 - **MCP check:** add the server to Claude, ask it to "buy one weather call", confirm it returns a link and later reports paid.
 - **Rules checklist before submitting:** banner links work; slides use the Widget Factory template; repo public; EMBER2026 address shown; demo works on a fresh phone and browser in under 2 minutes; Telegram confirmation done.

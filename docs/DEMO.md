@@ -6,7 +6,7 @@ Placeholders: `<VIDEO_URL>`, `<SLIDES_URL>`, `<MAINNET_TXID>`.
 
 ## 75-second video
 
-Record at 1080p. Screen on the left, phone (Paytaca or Cashonize) mirrored or filmed on the right. Keep the cursor slow. Captions are burned in; the voice-over is optional.
+Record at 1080p. Screen on the left, phone (Paytaca or Selene) mirrored or filmed on the right. Keep the cursor slow. Captions are burned in; the voice-over is optional.
 
 | # | Time | Shot | On-screen caption | Voice-over |
 |---|---|---|---|---|
@@ -28,12 +28,12 @@ Recording checklist:
 
 ## Judge path (about 2 minutes)
 
-The judge needs a phone wallet with WizardConnect (Paytaca or Cashonize) and a few cents of BCH. The demo payment is 2,000 sats (about $0.01).
+The judge needs a phone wallet with WizardConnect (Paytaca or Selene) and a few cents of BCH. The demo payment is 2,000 sats (about $0.01).
 
 1. Open https://nod-bch.vercel.app on a laptop. The banner at the top shows the **Slides ↗**, **Repo ↗** and **EMBER2026** links.
 2. Click **Try the demo**. The demo agent signs a fresh request for "1 live weather report" and the approval page opens.
 3. Check the card: agent name and key, vendor address, amount in sats, purpose, expiry countdown, **signature valid**, and the network badge.
-4. Click **Connect wallet** (top right) and scan the QR with Paytaca or Cashonize. On a phone, tap **Open in wallet**, or copy the link and paste it into the wallet. Once connected, click **Nod — approve payment**.
+4. Click **Connect wallet** (top right) and scan the QR with Paytaca or Selene. On a phone, tap **Open in wallet**, or copy the link and paste it into the wallet. Once connected, click **Nod — approve payment**.
 5. In the wallet, check that the outputs are the vendor plus an OP_RETURN, then approve.
 6. The receipt page opens at `/tx/<txid>`: "request matches payment", an explorer link, and the item delivered by the vendor (the weather report).
 7. Optional, 20 seconds: open the receipt URL in a private window. It verifies again from the chain alone.
