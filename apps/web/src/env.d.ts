@@ -1,9 +1,7 @@
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
-  readonly VITE_NETWORK?: string;
-  readonly VITE_SLIDES_URL?: string;
-  readonly VITE_EMBER2026_ADDRESS?: string;
+  /** Origin serving /api when it is not the app's own origin (e.g. the fixed-IP server that talks to HSP). */
   readonly VITE_API_BASE?: string;
 }
 

@@ -1,29 +1,49 @@
-import { PUSD, type Amount } from '@nod/protocol';
+import { formatUnits } from 'viem';
 
-/** Satoshis → BCH, trimming trailing zeros (1000 → "0.00001"). */
-export const satsToBch = (sats: number): string =>
-  (sats / 1e8).toFixed(8).replace(/0+$/, '').replace(/\.$/, '');
+const groupThousands = (whole: string): string => whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 
-export function formatAmount(amount: Amount): string {
-  if ('sats' in amount) {
-    return `${satsToBch(amount.sats)} BCH`;
-  }
-  const pusdCategory: string = PUSD.category;
-  if (pusdCategory && amount.token.toLowerCase() === pusdCategory.toLowerCase()) {
-    const units = BigInt(amount.units);
-    const scale = 10n ** BigInt(PUSD.decimals);
-    const whole = units / scale;
-    const frac = (units % scale).toString().padStart(PUSD.decimals, '0').replace(/0+$/, '');
-    return frac ? `${whole}.${frac} ${PUSD.symbol}` : `${whole} ${PUSD.symbol}`;
-  }
-  return `${amount.units} token units (${amount.token.slice(0, 12)}…)`;
+/** "12.5" → "$12.50". Exact string handling, no floats; unreadable input comes back with a $ prefix. */
+export function formatUsd(amountUsd: string | number): string {
+  const text = String(amountUsd).trim();
+  const match = /^(\d+)(?:\.(\d+))?$/.exec(text);
+  if (!match) return `$${text}`;
+  const whole = match[1]!.replace(/^0+(?=\d)/, '');
+  const fraction = match[2] ?? '';
+  // Pad to cents; never round away precision the server sent.
+  const cents = fraction.length <= 2 ? fraction.padEnd(2, '0') : fraction;
+  return `$${groupThousands(whole)}.${cents}`;
 }
 
-/** Raw sats for the approval page's secondary line. */
-export const satsLine = (amount: Amount): string | null =>
-  'sats' in amount ? `${amount.sats.toLocaleString()} sats` : null;
+/** Token base units → "0.1" (exact, via viem formatUnits); undefined when `raw` is not an integer. */
+export function tokenAmount(raw: bigint | string | number, decimals: number): string | undefined {
+  let value: bigint;
+  try {
+    value = typeof raw === 'bigint' ? raw : BigInt(raw);
+  } catch {
+    return undefined;
+  }
+  if (!Number.isInteger(decimals) || decimals < 0) return undefined;
+  const [whole = '0', fraction] = formatUnits(value, decimals).split('.');
+  return fraction ? `${groupThousands(whole)}.${fraction}` : groupThousands(whole);
+}
 
-/** Human label for a request expiry: "4m 12s", "2h 5m", "expired". */
+/** Token base units → "0.1 USDC"; falls back to the raw value when it cannot be read. */
+export function formatToken(raw: bigint | string | number, decimals: number, coin?: string): string {
+  const amount = tokenAmount(raw, decimals);
+  if (amount === undefined) return `${String(raw)} base units${coin ? ` of ${coin}` : ''}`;
+  return coin ? `${amount} ${coin}` : amount;
+}
+
+/** 0x1234…cdef for compact display. */
+export function shortAddress(address: string, keep = 4): string {
+  if (address.length <= keep * 2 + 3) return address;
+  return `${address.slice(0, 2 + keep)}…${address.slice(-keep)}`;
+}
+
+/** 0x12345678…90abcdef for transaction hashes. */
+export const shortHash = (hash: string, keep = 8): string => shortAddress(hash, keep);
+
+/** Human countdown: "4m 12s", "2h 5m", "expired". */
 export function expiryLabel(expiry: number, nowSeconds = Date.now() / 1000): string {
   const left = expiry - nowSeconds;
   if (left <= 0) return 'expired';
@@ -37,6 +57,27 @@ export function expiryLabel(expiry: number, nowSeconds = Date.now() / 1000): str
   return `${s}s`;
 }
 
-export function formatExpiry(expiry: number): string {
-  return new Date(expiry * 1000).toLocaleString();
+/** Local date and time for unix seconds. */
+export function formatDateTime(unixSeconds: number): string {
+  return new Date(unixSeconds * 1000).toLocaleString();
+}
+
+/**
+ * Unix seconds from unix seconds, milliseconds, a numeric string or an ISO date.
+ * Undefined when the value cannot be read as a time.
+ */
+export function toUnixSeconds(value: unknown): number | undefined {
+  if (typeof value === 'bigint') return toUnixSeconds(Number(value));
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value) || value <= 0) return undefined;
+    return Math.floor(value > 1e12 ? value / 1000 : value);
+  }
+  if (typeof value === 'string') {
+    const text = value.trim();
+    if (!text) return undefined;
+    if (/^\d+(\.\d+)?$/.test(text)) return toUnixSeconds(Number(text));
+    const ms = Date.parse(text);
+    return Number.isNaN(ms) ? undefined : Math.floor(ms / 1000);
+  }
+  return undefined;
 }

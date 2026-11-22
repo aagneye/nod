@@ -1,23 +1,21 @@
-import { EXPLORER_TX_URL, type Network } from '@nod/protocol';
-
-/** Chipnet by default; `VITE_NETWORK=mainnet` switches everything (chain, addresses, explorer). */
-export const NETWORK: Network = import.meta.env.VITE_NETWORK === 'mainnet' ? 'mainnet' : 'chipnet';
-
-export const EXPLORER_TX = EXPLORER_TX_URL[NETWORK];
-
 /**
- * Widget Factory slide deck.
- * TODO(C9): replace with the team's own deck copy ("anyone with link can view").
- * Until then the banner links the official template so the link never 404s.
+ * Build-time settings for the web app. Everything network-specific (chains, contract
+ * addresses, the HSP payment token) comes from the server at runtime via GET /api/config.
  */
-export const SLIDES_URL =
-  import.meta.env.VITE_SLIDES_URL ||
-  'https://docs.google.com/presentation/d/1Yfuk9CJkf4U9M_WukcELhumWgj3Ak6345Ewy8hSp-Hk/edit';
+
+/** Origin serving the /api routes; empty means the app's own origin. */
+export const API_BASE = (import.meta.env.VITE_API_BASE ?? '').trim().replace(/\/+$/, '');
 
 export const REPO_URL = 'https://github.com/aagneye/nod';
 
-/** Team CashTokens address for EMBER2026 community votes (submission gate). */
-export const EMBER_ADDRESS = (import.meta.env.VITE_EMBER2026_ADDRESS ?? '').trim();
+/** Prefix for links to files in the repo. */
+export const REPO_BLOB_URL = `${REPO_URL}/blob/main`;
 
-/** Origin serving the api/ functions; empty = same origin. */
-export const API_BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/+$/, '');
+/** Credit: the project that inspired Nod. */
+export const REQUISITION_URL = 'https://dorahacks.io/build/50833';
+
+/** Where to send someone who has no browser wallet yet. */
+export const WALLET_INSTALL_LINKS = [
+  { label: 'Get OKX Wallet', href: 'https://web3.okx.com/' },
+  { label: 'Get MetaMask', href: 'https://metamask.io/download/' },
+] as const;
