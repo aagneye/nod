@@ -60,6 +60,9 @@ function ShareButton() {
   );
 }
 
+/** The vendor reports unix seconds; accept ms too so the date never lands in 1970. */
+const deliveredTime = (at: number): string => new Date(at > 1e12 ? at : at * 1000).toLocaleString();
+
 /** "Delivered by the vendor": the demo vendor checks the receipt itself and hands over the item. */
 function DeliveredItem({ txid, signed }: { txid: string; signed: SignedNodRequest }) {
   const [result, setResult] = useState<BuyResult | null>(null);
@@ -96,7 +99,7 @@ function DeliveredItem({ txid, signed }: { txid: string; signed: SignedNodReques
           <h3 className="display mt-4 text-2xl break-words">{result.item.title}</h3>
           <p className="mt-2 text-sm leading-relaxed whitespace-pre-line break-words text-ink">{result.item.body}</p>
           <p className="mt-3 text-[10px] font-bold tracking-[0.14em] text-faint uppercase">
-            Delivered {new Date(result.item.deliveredAt).toLocaleString()}
+            Delivered {deliveredTime(result.item.deliveredAt)}
           </p>
         </>
       ) : (

@@ -17,6 +17,12 @@ type ViewState =
 
 const errorText = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
+/** Node errors are noisy; show a sentence the payer can act on instead. */
+const notFoundText = (message: string): string =>
+  /no such mempool or blockchain transaction|not found/i.test(message)
+    ? 'The Chipnet node has not seen this transaction yet.'
+    : 'The receipt could not be read from the chain right now.';
+
 /**
  * /tx/:txid[#payload…] — the receipt: verify the payment against the request(s)
  * that were approved. The requests come from the URL fragment (shareable, works
@@ -123,7 +129,7 @@ export default function ReceiptPage() {
     <Card className="mx-auto max-w-2xl">
       <span className="label">Receipt</span>
       <h1 className="display mt-2 text-2xl">Transaction not found</h1>
-      <p className="mt-3 break-all text-sm text-muted">{view.message}</p>
+      <p className="mt-3 text-sm text-muted">{notFoundText(view.message)}</p>
       <p className="mt-4 text-xs text-faint">
         If it was just broadcast, wait a few seconds for the Electrum server to see it and reload.
       </p>

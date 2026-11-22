@@ -115,7 +115,7 @@ function StageBlock() {
 
           <p className="mt-7 text-[10px] tracking-[0.2em] text-[#a9a89e] uppercase">Purchase request</p>
           <p className="mt-1 font-display text-[52px] leading-none">
-            0.00001<span className="ml-2 align-top text-[20px] text-acid">BCH</span>
+            0.00002<span className="ml-2 align-top text-[20px] text-acid">BCH</span>
           </p>
 
           <div className="mt-5 rounded-[14px] bg-[#f8f5ed] p-3.5 text-ink">
@@ -124,9 +124,9 @@ function StageBlock() {
                 D
               </span>
               <span className="min-w-0">
-                <b className="block truncate text-xs">Dev Test Agent</b>
+                <b className="block truncate text-xs">Nod demo agent</b>
                 <small className="mt-0.5 block truncate text-[9px] text-[#666]">
-                  Test payment for Nod web app
+                  1 live weather report
                 </small>
               </span>
             </div>

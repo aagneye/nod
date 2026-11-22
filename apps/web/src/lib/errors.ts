@@ -15,6 +15,9 @@ export interface FriendlyError {
 export function friendlyError(e: unknown): FriendlyError {
   const msg = e instanceof Error ? e.message : String(e);
   if (/reject|denied|cancel/i.test(msg)) return { text: 'You rejected the signature in your wallet.' };
+  if (/network error|failed to fetch|fetch failed|timed? ?out/i.test(msg)) {
+    return { text: 'Could not reach a BCH server. Nothing was paid — try again.', detail: msg };
+  }
   if (/not ready/i.test(msg)) return { text: 'Wallet still connecting — try again in a moment.' };
 
   if (/insufficient funds/i.test(msg) || /no spendable bch/i.test(msg)) {

@@ -97,7 +97,10 @@ export async function signAndBroadcast(
       // The relay JSON-encodes the message: bytes must become hex and bigints a tagged string.
       sourceOutputs: built.sourceOutputs.map((so) => sourceOutputToRelay(so)),
       userPrompt,
-      broadcast: true,
+      // Ask for the signature only. Some wallets answer "Network Error" while
+      // broadcasting even though they signed fine, so the app publishes the
+      // signed bytes itself over the Electrum servers it already trusts.
+      broadcast: false,
     },
     inputPaths: [...built.inputPaths],
   });
@@ -106,27 +109,22 @@ export async function signAndBroadcast(
   if (!signedHex) throw new Error('The wallet returned no signed transaction.');
   const txid = hashTransaction(hexToBin(signedHex));
 
-  let onChain = false;
-  for (let attempt = 0; attempt < 8 && !onChain; attempt++) {
-    try {
-      await chain.getTransactionHex(txid);
-      onChain = true;
-    } catch {
-      await sleep(1000);
-    }
-  }
-  if (!onChain) {
-    try {
-      const broadcastTxid = await chain.broadcast(signedHex);
-      if (broadcastTxid !== txid) throw new Error('Broadcast returned an unexpected txid.');
-    } catch (e) {
-      // The wallet may have broadcast it in between; confirm before failing.
+  try {
+    const broadcastTxid = await chain.broadcast(signedHex);
+    if (broadcastTxid !== txid) throw new Error('Broadcast returned an unexpected txid.');
+  } catch (e) {
+    // A wallet that ignores broadcast:false may have sent it already; only fail
+    // once the chain still does not know the transaction.
+    let onChain = false;
+    for (let attempt = 0; attempt < 8 && !onChain; attempt++) {
       try {
         await chain.getTransactionHex(txid);
+        onChain = true;
       } catch {
-        throw e;
+        await sleep(1000);
       }
     }
+    if (!onChain) throw e;
   }
   return { txid };
 }
