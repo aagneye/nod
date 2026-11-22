@@ -1,0 +1,14 @@
+# Used by `docker build -f apps/web/Dockerfile .` (BuildKit reads <Dockerfile>.dockerignore).
+.git
+**/node_modules
+**/dist
+**/.vercel
+**/.server
+**/.env
+**/.env.*
+!**/.env.example
+**/*.key
+misc
+contracts/artifacts
+contracts/cache
+contracts/deployments

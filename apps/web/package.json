@@ -9,6 +9,8 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "build:vercel": "vite build && node scripts/build-vercel.mjs",
+    "serve": "node scripts/serve.mjs",
+    "build:standalone": "node scripts/serve.mjs --build-only",
     "test": "vitest run --config server/vitest.config.ts"
   },
   "dependencies": {
@@ -20,7 +22,8 @@
     "@wizardconnect/react": "^0.2.7",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "react-router-dom": "^7.9.0"
+    "react-router-dom": "^7.9.0",
+    "viem": "^2.58.4"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.0",
