@@ -2,7 +2,7 @@
   "name": "nod",
   "private": true,
   "version": "0.1.0",
-  "description": "Your agent asks. You nod. BCH settles.",
+  "description": "Your agent asks. You nod. HSK Chain settles. Human-approved AI agent payments through HSP, with receipts anchored on HSK Chain.",
   "type": "module",
   "workspaces": [
     "packages/*",
@@ -15,7 +15,7 @@
     "typecheck": "npm run typecheck --workspaces --if-present"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.12"
   },
   "license": "MIT"
 }
